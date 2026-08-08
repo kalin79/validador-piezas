@@ -1,0 +1,45 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Ai;
+
+use RuntimeException;
+
+final class AiException extends RuntimeException
+{
+    public static function missingApiKey(): self
+    {
+        return new self(
+            'Falta ANTHROPIC_API_KEY en el archivo .env. '
+            .'Mientras tanto puedes usar AI_DRIVER=fake para probar el flujo sin gastar tokens.'
+        );
+    }
+
+    public static function requestFailed(int $status, string $body): self
+    {
+        return new self("La API respondio {$status}: ".mb_substr($body, 0, 500));
+    }
+
+    public static function noToolUse(): self
+    {
+        return new self(
+            'El modelo no devolvio la salida estructurada esperada. '
+            .'Nunca se persiste una respuesta que no cumple el esquema.'
+        );
+    }
+
+    public static function invalidSchema(string $detalle): self
+    {
+        return new self("La salida del modelo no cumple el esquema: {$detalle}");
+    }
+
+    public static function imageTooLarge(int $bytes, int $max): self
+    {
+        return new self(sprintf(
+            'La imagen codificada pesa %.1f MB y el limite es %.1f MB.',
+            $bytes / 1048576,
+            $max / 1048576,
+        ));
+    }
+}
