@@ -56,6 +56,44 @@ return [
     ],
 
     /*
+     | Modelos que el usuario puede elegir por ejecucion.
+     |
+     | La clave es el identificador que se envia a la API; el valor, lo que ve
+     | quien elige.
+     |
+     | El orden y las etiquetas salen de una comparacion real sobre la misma
+     | pieza, con el mismo conjunto de reglas y el mismo prompt:
+     |
+     |   Opus 5   -> 5 hallazgos de juicio, todos legitimos. Entre ellos una
+     |               beca anunciada sin vigencia ni condiciones, que es
+     |               exposicion normativa.
+     |   Haiku 4.5 -> CERO hallazgos de juicio. Los tres que reporto eran
+     |               deterministas, o sea producidos por el codigo. La llamada
+     |               a la API no aporto nada y la pieza salio aprobada con 95.
+     |
+     | Por eso Haiku queda marcado como no apto para emitir veredictos. Sirve
+     | para comprobar que la tuberia funciona —que la llamada sale, que el
+     | esquema calza, que el mapeo no descarta codigos— y cuesta centavos. Para
+     | juzgar piezas, no: un modelo que no detecta nada tampoco permite saber
+     | si un cambio en el prompt mejoro algo.
+     |
+     | Un puntaje solo es comparable con otro obtenido con el mismo modelo. El
+     | 95 de Haiku y el 40 de Opus describen la misma pieza.
+     |
+     | Quitar un modelo de aqui lo deshabilita en el panel y en la API sin
+     | tocar codigo. Las validaciones historicas que lo usaron conservan su
+     | model_identifier: el registro de auditoria no depende de esta lista.
+     |
+     | Debe mantenerse alineada con 'pricing': un modelo elegible cuyo precio
+     | no este listado produce un costo estimado de cero.
+     */
+    'available_models' => [
+        'claude-sonnet-5' => 'Sonnet 5  ·  produccion',
+        'claude-opus-5' => 'Opus 5  ·  piezas criticas y promociones',
+        'claude-haiku-4-5-20251001' => 'Haiku 4.5  ·  solo pruebas tecnicas, NO emite juicio util',
+    ],
+
+    /*
      | Preparacion de la imagen antes de enviarla.
      |
      | No es solo ahorro: la API rechaza imagenes sobre 10 MB en base64, y una

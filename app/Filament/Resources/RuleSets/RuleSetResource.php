@@ -67,4 +67,32 @@ class RuleSetResource extends Resource
     }
 
 
+
+    /**
+     * El dueno es polimorfico manual, asi que el filtro es en dos ramas: los
+     * conjuntos de cliente contra los clientes accesibles, los de marca contra
+     * las marcas accesibles.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $user = auth()->user();
+
+        if ($user === null || $user->hasGlobalAccess()) {
+            return $query;
+        }
+
+        $clientes = $user->accessibleClientIds();
+        $marcas = $user->accessibleBrandIds();
+
+        return $query->where(function (Builder $q) use ($clientes, $marcas): void {
+            $q->where(function (Builder $q2) use ($clientes): void {
+                $q2->where('owner_type', \App\Enums\RuleSetOwnerType::Client->value)
+                    ->whereIn('owner_id', $clientes);
+            })->orWhere(function (Builder $q2) use ($marcas): void {
+                $q2->where('owner_type', \App\Enums\RuleSetOwnerType::Brand->value)
+                    ->whereIn('owner_id', $marcas);
+            });
+        });
+    }
 }

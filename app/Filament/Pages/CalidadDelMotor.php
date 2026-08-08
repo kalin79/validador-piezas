@@ -145,4 +145,17 @@ class CalidadDelMotor extends Page
             ->map(fn ($n): int => (int) $n)
             ->all();
     }
+
+    /**
+     * Las metricas de precision exponen el desempeno del motor sobre todas
+     * las marcas accesibles. Es informacion de auditoria.
+     *
+     * Las Pages de Filament no pasan por Policy: sin canAccess() quedan
+     * abiertas a cualquiera que sepa la URL, aunque el enlace no se vea en el
+     * menu.
+     */
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->hasPermissionTo('audit.view') === true;
+    }
 }

@@ -8,6 +8,7 @@ use App\Services\AuditLogger;
 use App\Services\RuleResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 use App\Models\Team;
@@ -21,6 +22,25 @@ use Illuminate\Support\Facades\RateLimiter;
 
 use App\Models\PromptTemplate;
 use App\Observers\PromptTemplateObserver;
+
+use App\Models\Asset;
+use App\Models\Brand;
+use App\Models\BrandAsset;
+use App\Models\Client;
+use App\Models\Palette;
+use App\Models\RuleSet;
+use App\Models\Submission;
+use App\Observers\RuleSetObserver;
+use App\Policies\AssetPolicy;
+use App\Policies\BrandAssetPolicy;
+use App\Policies\BrandPolicy;
+use App\Policies\ClientPolicy;
+use App\Policies\PalettePolicy;
+use App\Policies\PromptTemplatePolicy;
+use App\Policies\RuleSetPolicy;
+use App\Policies\SubmissionPolicy;
+use App\Policies\TeamPolicy;
+use App\Policies\UserPolicy;
 
 
 class AppServiceProvider extends ServiceProvider
@@ -44,8 +64,52 @@ class AppServiceProvider extends ServiceProvider
         Team::observe(TeamObserver::class);
         User::observe(UserObserver::class);
 
-        Model::shouldBeStrict(!$isProduction);
+        // Existia en app/Observers pero nunca se registraba, asi que la
+        // invariante de "una sola version publicada por dueno" solo la aplicaba
+        // el boton del panel. Por seeder o por script quedaban dos vigentes.
+        RuleSet::observe(RuleSetObserver::class);
+
+        $this->registrarPoliticas();
+
+        /*
+         * preventLazyLoading tambien en produccion.
+         *
+         * Antes era shouldBeStrict(!$isProduction): las consultas N+1 reventaban
+         * en desarrollo y degradaban en silencio justo donde importa. Es
+         * preferible un error visible a una pagina que tarda ocho segundos sin
+         * que nadie sepa por que.
+         */
+        Model::shouldBeStrict(true);
         DB::prohibitDestructiveCommands($isProduction);
 
+    }
+
+    /**
+     * Registro explicito de las politicas.
+     *
+     * Laravel las descubre solo por convencion de nombres, pero en un sistema
+     * de auditoria conviene que la lista este a la vista: si manana alguien
+     * agrega un modelo con datos de cliente y olvida su politica, aqui se nota.
+     * El descubrimiento automatico falla en silencio, y en silencio significa
+     * "todo permitido".
+     */
+    private function registrarPoliticas(): void
+    {
+        $politicas = [
+            User::class => UserPolicy::class,
+            Team::class => TeamPolicy::class,
+            Client::class => ClientPolicy::class,
+            Brand::class => BrandPolicy::class,
+            RuleSet::class => RuleSetPolicy::class,
+            PromptTemplate::class => PromptTemplatePolicy::class,
+            Palette::class => PalettePolicy::class,
+            BrandAsset::class => BrandAssetPolicy::class,
+            Asset::class => AssetPolicy::class,
+            Submission::class => SubmissionPolicy::class,
+        ];
+
+        foreach ($politicas as $modelo => $politica) {
+            Gate::policy($modelo, $politica);
+        }
     }
 }

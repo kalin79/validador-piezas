@@ -63,4 +63,31 @@ class UserResource extends Resource
                 SoftDeletingScope::class,
             ]);
     }
+
+    /**
+     * Se ven los usuarios de los propios equipos, nada mas.
+     *
+     * Sin este filtro cualquiera entraba a /admin/users, se asignaba
+     * super_admin y abria todos los clientes.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $user = auth()->user();
+
+        if ($user === null || $user->hasGlobalAccess()) {
+            return $query;
+        }
+
+        $equipos = $user->teams()->pluck('teams.id');
+
+        if ($equipos->isEmpty()) {
+            return $query->whereKey($user->id);
+        }
+
+        return $query->where(function (Builder $q) use ($equipos, $user): void {
+            $q->whereHas('teams', fn (Builder $t) => $t->whereIn('teams.id', $equipos))
+                ->orWhere('id', $user->id);
+        });
+    }
 }

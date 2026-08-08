@@ -160,4 +160,16 @@ class ValidacionRapida extends Page
         $this->runId = null;
         $this->imagen = null;
     }
+
+    /**
+     * Cada validacion cuesta tokens reales. El auditor ve todo y no gasta nada.
+     *
+     * Las Pages de Filament no pasan por Policy: sin canAccess() quedan
+     * abiertas a cualquiera que sepa la URL, aunque el enlace no se vea en el
+     * menu.
+     */
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->hasPermissionTo('validation.trigger') === true;
+    }
 }

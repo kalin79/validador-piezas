@@ -64,4 +64,16 @@ class TeamResource extends Resource
                 SoftDeletingScope::class,
             ]);
     }
+
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $user = auth()->user();
+
+        if ($user === null || $user->hasGlobalAccess()) {
+            return $query;
+        }
+
+        return $query->whereIn('id', $user->teams()->pluck('teams.id'));
+    }
 }

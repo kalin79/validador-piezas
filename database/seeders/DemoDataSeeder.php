@@ -191,16 +191,44 @@ class DemoDataSeeder extends Seeder
         // ------------------------------------------------------------------
         // Usuarios de prueba.
         // ------------------------------------------------------------------
+        /*
+         * Las credenciales salen del entorno, no del codigo.
+         *
+         * Antes este seeder creaba un super_admin con la contrasena '123456' y
+         * un correo real. Basta que corra una vez en el servidor de un cliente
+         * para entregarle la instalacion completa a quien lea el repositorio.
+         *
+         * Sin DEMO_ADMIN_EMAIL y DEMO_ADMIN_PASSWORD no se crea ningun usuario:
+         * es preferible una instalacion sin acceso a una con acceso conocido.
+         * El administrador real se crea a mano con php artisan tinker.
+         */
+        $correoAdmin = env('DEMO_ADMIN_EMAIL');
+        $claveAdmin = env('DEMO_ADMIN_PASSWORD');
+
+        if (blank($correoAdmin) || blank($claveAdmin)) {
+            $this->command?->warn(
+                'DemoDataSeeder: sin DEMO_ADMIN_EMAIL y DEMO_ADMIN_PASSWORD no se crean usuarios.'
+            );
+
+            return;
+        }
+
+        if (strlen((string) $claveAdmin) < 12) {
+            $this->command?->error('DemoDataSeeder: DEMO_ADMIN_PASSWORD debe tener al menos 12 caracteres.');
+
+            return;
+        }
+
         $admin = User::firstOrCreate(
-            ['email' => 'c.augusto.espinoza@gmail.com'],
-            ['name' => 'Administrador', 'password' => '123456', 'is_active' => true],
+            ['email' => $correoAdmin],
+            ['name' => 'Administrador', 'password' => $claveAdmin, 'is_active' => true],
         );
         $admin->assignRole('super_admin');
         $admin->forceFill(['active_brand_id' => $pro->id])->save();
 
         $disenador = User::firstOrCreate(
             ['email' => 'agencia@validador.test'],
-            ['name' => 'Disenador Agencia', 'password' => 'password', 'is_active' => true],
+            ['name' => 'Disenador Agencia', 'password' => $claveAdmin, 'is_active' => true],
         );
         $disenador->assignRole('uploader');
         $disenador->teams()->syncWithoutDetaching([$agencia->id]);
@@ -208,7 +236,7 @@ class DemoDataSeeder extends Seeder
 
         $revisor = User::firstOrCreate(
             ['email' => 'revisor@validador.test'],
-            ['name' => 'Revisor Gloria', 'password' => 'password', 'is_active' => true],
+            ['name' => 'Revisor Gloria', 'password' => $claveAdmin, 'is_active' => true],
         );
         $revisor->assignRole('reviewer');
         $revisor->teams()->syncWithoutDetaching([$cuenta->id]);

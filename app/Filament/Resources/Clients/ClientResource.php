@@ -66,4 +66,21 @@ class ClientResource extends Resource
                 SoftDeletingScope::class,
             ]);
     }
+
+    /**
+     * Client no usa BelongsToBrand, asi que no tiene scope global: sin este
+     * filtro el listado entregaba la cartera completa de la agencia a
+     * cualquier usuario autenticado.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $user = auth()->user();
+
+        if ($user === null || $user->hasGlobalAccess()) {
+            return $query;
+        }
+
+        return $query->whereIn('id', $user->accessibleClientIds());
+    }
 }

@@ -12,6 +12,7 @@ use App\Filament\Resources\PromptTemplates\Tables\PromptTemplatesTable;
 use App\Models\PromptTemplate;
 use BackedEnum;
 use Filament\Resources\Resource;
+use Illuminate\Database\Eloquent\Builder;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
@@ -64,5 +65,21 @@ class PromptTemplateResource extends Resource
             'create' => CreatePromptTemplate::route('/create'),
             'edit' => EditPromptTemplate::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * Las plantillas generales (client_id nulo) afectan a todos los clientes:
+     * solo las ve quien tiene alcance global.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $user = auth()->user();
+
+        if ($user === null || $user->hasGlobalAccess()) {
+            return $query;
+        }
+
+        return $query->whereIn('client_id', $user->accessibleClientIds());
     }
 }

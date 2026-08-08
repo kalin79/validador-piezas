@@ -227,4 +227,17 @@ class RevisionHumana extends Page
         $this->nuevoCodigo = '';
         $this->nuevaDescripcion = '';
     }
+
+    /**
+     * Confirmar o descartar hallazgos alimenta las metricas de calibracion:
+     * quien revisa mal, calibra mal.
+     *
+     * Las Pages de Filament no pasan por Policy: sin canAccess() quedan
+     * abiertas a cualquiera que sepa la URL, aunque el enlace no se vea en el
+     * menu.
+     */
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->hasPermissionTo('review.perform') === true;
+    }
 }
