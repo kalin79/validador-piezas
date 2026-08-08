@@ -103,6 +103,33 @@ final class ValidationController
      * Marcas visibles para el token. El plugin la usa para poblar su selector
      * en vez de traer la lista escrita a mano.
      */
+    /**
+     * Quien soy y que puedo hacer.
+     *
+     * El plugin la llama al arrancar para tres cosas: comprobar que el token
+     * sigue vivo, saludar por nombre, y decidir si muestra la pantalla de
+     * acceso o el formulario. Sin esta ruta, el plugin no puede distinguir
+     * "token invalido" de "servidor caido" hasta que el disenador intenta
+     * validar y falla.
+     *
+     * No devuelve nada sensible: nombre, correo y el numero de marcas. El
+     * detalle de cuales sale de /marcas, que ya filtra por alcance.
+     */
+    public function me(Request $request): JsonResponse
+    {
+        $usuario = $request->user();
+
+        return response()->json([
+            'data' => [
+                'name' => $usuario->name,
+                'email' => $usuario->email,
+                'brands' => $usuario->accessibleBrandCount(),
+                'can_validate' => $usuario->hasPermissionTo('validation.trigger'),
+                'token_name' => $usuario->currentAccessToken()?->name,
+            ],
+        ]);
+    }
+
     public function brands(Request $request): JsonResponse
     {
         $marcas = Brand::query()

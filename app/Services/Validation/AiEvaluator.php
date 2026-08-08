@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Validation;
 
 use App\Models\Asset;
+use App\Models\Rule;
+use App\Enums\RuleCategory;
 use App\Models\PromptTemplate;
 use App\Services\Ai\AiException;
 use App\Services\Ai\ImagePreparer;
@@ -77,8 +79,19 @@ final class AiEvaluator
         // Pasarle un arreglo vacio equivale a decirle "no se detecto el logo",
         // y eso produce un hallazgo bloqueante falso: la pieza se rechaza por
         // un dato que nunca se midio.
+        /*
+         * La regla que ampara los hallazgos de logo.
+         *
+         * LogoEvaluator mide contra los activos de marca, no contra reglas,
+         * pero sus hallazgos necesitan un codigo: uno de ellos es bloqueante y
+         * sin regla no se puede defender el rechazo. Se le pasa la primera
+         * regla de categoria "activos obligatorios" del conjunto efectivo.
+         */
+        $reglaActivos = $resolved->rules
+            ->first(fn (Rule $r): bool => $r->category === RuleCategory::RequiredAssets);
+
         $hallazgosLogo = is_array($respuesta->data['logo'] ?? null)
-            ? $this->logoEvaluator->evaluate($asset, $respuesta->data['logo'], $channel)
+            ? $this->logoEvaluator->evaluate($asset, $respuesta->data['logo'], $channel, $reglaActivos)
             : [];
 
         return [

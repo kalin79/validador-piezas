@@ -9,6 +9,7 @@ use App\Enums\RuleCategory;
 use App\Enums\Severity;
 use App\Models\Asset;
 use App\Models\BrandAsset;
+use App\Models\Rule;
 use App\Services\Validation\FindingDraft;
 
 /**
@@ -24,10 +25,33 @@ final class LogoEvaluator
 {
     /**
      * @param  array<string, mixed>  $logoData  bloque 'logo' de la salida del modelo
+     * @param  Rule|null  $regla  regla de categoria "activos obligatorios" que
+     *                            ampara estos hallazgos, si el conjunto la tiene
      * @return array<int, FindingDraft>
      */
-    public function evaluate(Asset $asset, array $logoData, ?string $channel): array
+    public function evaluate(Asset $asset, array $logoData, ?string $channel, ?Rule $regla = null): array
     {
+        /*
+         * Este evaluador no recibe reglas: mide contra los activos de marca y
+         * las coordenadas que devolvio el modelo. Pero sus hallazgos si tienen
+         * que apuntar a una regla, por dos motivos.
+         *
+         * El primero es de auditoria: el hallazgo de presencia es BLOQUEANTE, y
+         * rechazar una pieza sin poder decir bajo que regla no se defiende ante
+         * nadie.
+         *
+         * El segundo es de calibracion: CalidadDelMotor filtra por
+         * findings.rule_code, asi que sin codigo estas validaciones nunca
+         * entraban en las metricas de precision y no habia forma de saber si
+         * aciertan.
+         *
+         * Se toma la regla de categoria "activos obligatorios" del conjunto
+         * efectivo. Si el conjunto no tiene ninguna, los hallazgos salen sin
+         * codigo como antes: es preferible reportar el problema sin etiqueta a
+         * no reportarlo.
+         */
+        $codigo = $regla?->code;
+        $reglaId = $regla?->id;
         $obligatorios = BrandAsset::query()
             ->where('brand_id', $asset->brand_id)
             ->where('is_active', true)
@@ -52,6 +76,8 @@ final class LogoEvaluator
                         category: RuleCategory::RequiredAssets,
                         severity: Severity::Blocking,
                         description: sprintf('No se detecto el %s en la pieza, y su presencia es obligatoria.', $activo->name),
+                        ruleCode: $codigo,
+                        ruleId: $reglaId,
                         evidence: $logoData['notes'] ?? null,
                         evidenceData: [
                             'brand_asset_id' => $activo->id,
@@ -89,6 +115,8 @@ final class LogoEvaluator
                             $porcentaje,
                             $activo->min_width_percent,
                         ),
+                        ruleCode: $codigo,
+                        ruleId: $reglaId,
                         evidenceData: [
                             'brand_asset_id' => $activo->id,
                             'width_percent' => round($porcentaje, 2),
@@ -128,6 +156,8 @@ final class LogoEvaluator
                             implode(' y ', array_keys($insuficientes)),
                             $activo->clear_space_ratio,
                         ),
+                        ruleCode: $codigo,
+                        ruleId: $reglaId,
                         evidenceData: [
                             'brand_asset_id' => $activo->id,
                             'required_clear_space' => round($resguardo, 4),
@@ -158,6 +188,8 @@ final class LogoEvaluator
                             $posicion->label(),
                             $permitidas,
                         ),
+                        ruleCode: $codigo,
+                        ruleId: $reglaId,
                         evidenceData: [
                             'brand_asset_id' => $activo->id,
                             'detected_position' => $posicion->value,
