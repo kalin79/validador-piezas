@@ -23,10 +23,10 @@ class ClientResource extends Resource
     protected static ?string $model = Client::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBuildingOffice2;
-    protected static string|UnitEnum|null $navigationGroup = 'Configuración';
+    protected static string|UnitEnum|null $navigationGroup = 'Configuracion';
     protected static ?string $navigationLabel = 'Clientes';
     protected static ?string $modelLabel = 'cliente';
-    protected static ?string $pluralModelLabel = 'Clientes';
+    protected static ?string $pluralModelLabel = 'clientes';
     protected static ?int $navigationSort = 1;
 
     // protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;

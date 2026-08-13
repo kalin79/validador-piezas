@@ -26,7 +26,7 @@ class RuleSetResource extends Resource
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSwatch;
     protected static string|UnitEnum|null $navigationGroup = 'Base de conocimiento';
     protected static ?string $navigationLabel = 'Conjuntos de reglas';
-    protected static ?string $modelLabel = 'conjunto de reglas';
+    protected static ?string $modelLabel = 'conjunto de regla';
     protected static ?string $pluralModelLabel = 'Conjuntos de reglas';
     protected static ?int $navigationSort = 1;
 

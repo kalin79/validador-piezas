@@ -15,34 +15,12 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
-use UnitEnum;
 
 class BrandAssetResource extends Resource
 {
     protected static ?string $model = BrandAsset::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
-
-    /*
-     * Sin estas lineas el recurso quedaba fuera de los cuatro grupos del
-     * panel: Filament lo listaba suelto arriba y con el nombre generado del
-     * modelo, "Brand Assets", en ingles.
-     *
-     * Va en Base de conocimiento y no en Configuracion porque un activo de
-     * marca no es un dato de la empresa: define que debe cumplir la pieza
-     * —que el logo aparezca, con que tamano y en que posicion—, igual que una
-     * regla. De hecho sus hallazgos se reportan bajo la regla de categoria
-     * "activos obligatorios" del conjunto vigente.
-     */
-    protected static string|UnitEnum|null $navigationGroup = 'Base de conocimiento';
-
-    protected static ?string $navigationLabel = 'Activos de marca';
-
-    protected static ?string $modelLabel = 'activo de marca';
-
-    protected static ?string $pluralModelLabel = 'Activos de marca';
-
-    protected static ?int $navigationSort = 4;
 
     protected static ?string $recordTitleAttribute = 'name';
 

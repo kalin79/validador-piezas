@@ -32,11 +32,11 @@ class ValidacionRapida extends Page
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBolt;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Operación';
+    protected static string|UnitEnum|null $navigationGroup = 'Operacion';
 
-    protected static ?string $navigationLabel = 'Validación rápida';
+    protected static ?string $navigationLabel = 'Validacion rapida';
 
-    protected static ?string $title = 'Validación rápida';
+    protected static ?string $title = 'Validacion rapida';
 
     protected static ?int $navigationSort = 1;
 

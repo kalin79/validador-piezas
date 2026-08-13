@@ -34,11 +34,11 @@ class RevisionHumana extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedClipboardDocumentCheck;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Operación';
+    protected static string|UnitEnum|null $navigationGroup = 'Operacion';
 
-    protected static ?string $navigationLabel = 'Revisión';
+    protected static ?string $navigationLabel = 'Revision';
 
-    protected static ?string $title = 'Revisión humana';
+    protected static ?string $title = 'Revision humana';
 
     protected static ?int $navigationSort = 4;
 

@@ -29,7 +29,7 @@ class MisTokens extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedKey;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Operación';
+    protected static string|UnitEnum|null $navigationGroup = 'Operacion';
 
     protected static ?string $navigationLabel = 'Mis tokens de API';
 

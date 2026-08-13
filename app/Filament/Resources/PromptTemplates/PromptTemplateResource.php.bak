@@ -40,9 +40,9 @@ class PromptTemplateResource extends Resource
 
     protected static ?string $navigationLabel = 'Instrucciones del modelo';
 
-    protected static ?string $modelLabel = 'instrucción';
+    protected static ?string $modelLabel = 'instruccion';
 
-    protected static ?string $pluralModelLabel = 'Instrucciones';
+    protected static ?string $pluralModelLabel = 'instrucciones';
 
     protected static ?int $navigationSort = 3;
 

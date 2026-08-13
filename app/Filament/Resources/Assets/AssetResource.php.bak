@@ -31,13 +31,13 @@ class AssetResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Operación';
+    protected static string|UnitEnum|null $navigationGroup = 'Operacion';
 
     protected static ?string $navigationLabel = 'Piezas validadas';
 
     protected static ?string $modelLabel = 'pieza';
 
-    protected static ?string $pluralModelLabel = 'Piezas';
+    protected static ?string $pluralModelLabel = 'piezas';
 
     protected static ?int $navigationSort = 3;
 

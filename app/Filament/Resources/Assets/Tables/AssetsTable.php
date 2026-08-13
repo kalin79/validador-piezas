@@ -9,6 +9,7 @@ use App\Enums\VerdictStatus;
 use App\Jobs\RunValidation;
 use App\Models\Asset;
 use App\Models\Brand;
+use App\Models\HumanReview;
 use App\Models\ValidationRun;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -36,6 +37,7 @@ class AssetsTable
                     'submission',
                     'latestRun.verdict',
                     'latestRun.findings',
+                    'latestRun.humanReviews',
                 ])
                 ->withCount('validationRuns'))
             ->defaultSort('created_at', 'desc')
@@ -65,8 +67,9 @@ class AssetsTable
                 TextColumn::make('veredicto')
                     ->label('Veredicto')
                     ->badge()
-                    ->state(fn (Asset $r): string => $r->latestRun?->verdict?->status->label() ?? 'Sin veredicto')
-                    ->color(fn (Asset $r): string => $r->latestRun?->verdict?->status->color() ?? 'gray'),
+                    ->state(fn (Asset $r): string => self::veredictoEfectivo($r)?->label() ?? 'Sin veredicto')
+                    ->color(fn (Asset $r): string => self::veredictoEfectivo($r)?->color() ?? 'gray')
+                    ->description(fn (Asset $r): ?string => self::notaDeRevision($r)),
 
                 TextColumn::make('puntaje')
                     ->label('Puntaje')
@@ -254,6 +257,54 @@ class AssetsTable
             ])
             ->emptyStateHeading('Sin piezas')
             ->emptyStateDescription('Las piezas aparecen aqui al cargarlas, validarlas rapido o enviarlas por la API.');
+    }
+
+    /**
+     * La revision humana de la ultima ejecucion, si la hubo.
+     *
+     * Se lee de la relacion ya cargada y no con una consulta nueva: en una
+     * tabla de cincuenta filas, resolverlo por fila serian cincuenta consultas.
+     */
+    private static function revisionDe(Asset $asset): ?HumanReview
+    {
+        return $asset->latestRun?->humanReviews->first();
+    }
+
+    /**
+     * El veredicto que vale: el de la persona si reviso, el de la maquina si no.
+     *
+     * Una pieza rechazada por el motor y aprobada despues por un revisor debe
+     * aparecer como aprobada. Mostrar el veredicto de la maquina cuando ya hay
+     * una decision humana encima convierte el listado en una fuente que
+     * contradice al expediente.
+     */
+    private static function veredictoEfectivo(Asset $asset): ?VerdictStatus
+    {
+        return self::revisionDe($asset)?->final_verdict
+            ?? $asset->latestRun?->verdict?->status;
+    }
+
+    /**
+     * La linea de abajo del veredicto.
+     *
+     * Distingue tres situaciones que a simple vista se confundirian: nadie
+     * reviso, alguien reviso y estuvo de acuerdo, o alguien reviso y cambio la
+     * conclusion. Solo en el tercer caso se nombra el veredicto de la maquina,
+     * porque es el unico donde la diferencia importa.
+     */
+    private static function notaDeRevision(Asset $asset): ?string
+    {
+        $revision = self::revisionDe($asset);
+
+        if ($revision === null) {
+            return null;
+        }
+
+        if (! $revision->overrode_machine) {
+            return 'Revisado y confirmado';
+        }
+
+        return 'Revisado · la maquina dijo '.$revision->machine_verdict->label();
     }
 
     private static function etiquetaOrigen(?string $source): string
