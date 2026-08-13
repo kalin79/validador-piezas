@@ -55,7 +55,23 @@ class ClientForm
                         ->keyLabel('Clave')
                         ->valueLabel('Valor')
                         ->addActionLabel('Agregar parametro')
-                        ->helperText('Claves sugeridas: jurisdiction, contrast_threshold, delta_e_default, retention_days'),
+                        /*
+                         * El texto anterior sugeria jurisdiction, delta_e_default
+                         * y retention_days, tres claves que ningun punto del
+                         * codigo consulta. Quien las llenaba esperaba un efecto
+                         * que nunca llegaba.
+                         *
+                         * Se listan las que de verdad se leen, con su formato,
+                         * porque scoring_weights es la unica que no es un numero
+                         * suelto y escribirla mal la vuelve inservible.
+                         */
+                        ->helperText(
+                            'Solo se leen estas tres claves. '
+                            .'contrast_threshold: numero, 4.5 por omision (WCAG AA). '
+                            .'observation_threshold: numero, 90 por omision. '
+                            .'scoring_weights: JSON, por omision {"blocking":0,"major":15,"minor":5,"info":0}. '
+                            .'Cualquier otra clave se guarda pero el sistema no la usa.'
+                        ),
                 ]),
         ]);
     }
