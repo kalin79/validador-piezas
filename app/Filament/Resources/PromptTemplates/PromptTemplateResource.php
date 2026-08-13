@@ -6,7 +6,7 @@ namespace App\Filament\Resources\PromptTemplates;
 
 use App\Filament\Resources\PromptTemplates\Pages\CreatePromptTemplate;
 use App\Filament\Resources\PromptTemplates\Pages\EditPromptTemplate;
-use App\Filament\Resources\PromptTemplates\Pages\ListPromptTemplates;
+use App\Filament\Resources\PromptTemplates\Pages\ListPromptTemplates;use App\Filament\Resources\PromptTemplates\Pages\ViewPromptTemplate;
 use App\Filament\Resources\PromptTemplates\Schemas\PromptTemplateForm;
 use App\Filament\Resources\PromptTemplates\Tables\PromptTemplatesTable;
 use App\Models\PromptTemplate;
@@ -63,6 +63,7 @@ class PromptTemplateResource extends Resource
         return [
             'index' => ListPromptTemplates::route('/'),
             'create' => CreatePromptTemplate::route('/create'),
+            'view' => ViewPromptTemplate::route('/{record}'),
             'edit' => EditPromptTemplate::route('/{record}/edit'),
         ];
     }

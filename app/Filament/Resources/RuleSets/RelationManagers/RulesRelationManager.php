@@ -17,7 +17,7 @@ use App\Models\RuleSet;
 use App\Services\Validation\DeterministicEngine;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
-use Filament\Actions\EditAction;
+use Filament\Actions\EditAction;use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
@@ -308,6 +308,10 @@ class RulesRelationManager extends RelationManager
                     ->visible(fn (RelationManager $livewire): bool => self::isEditable($livewire->getOwnerRecord())),
             ])
             ->recordActions([
+                ViewAction::make()
+                    ->label('Ver')
+                    ->modalHeading(fn (Rule $record): string => "{$record->code} · {$record->title}"),
+
                 EditAction::make()
                     ->visible(fn (RelationManager $livewire): bool => self::isEditable($livewire->getOwnerRecord())),
 

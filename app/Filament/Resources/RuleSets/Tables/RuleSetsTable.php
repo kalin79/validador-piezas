@@ -10,7 +10,7 @@ use App\Models\Rule;
 use App\Models\RuleSet;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
-use Filament\Actions\EditAction;
+use Filament\Actions\EditAction;use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -84,6 +84,9 @@ class RuleSetsTable
                     ]),
             ])
             ->recordActions([
+                ViewAction::make()
+                    ->label('Ver'),
+
                 Action::make('publish')
                     ->label('Publicar')
                     ->icon('heroicon-o-check-badge')

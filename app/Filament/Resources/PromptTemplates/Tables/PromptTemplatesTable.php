@@ -8,7 +8,7 @@ use App\Enums\RuleSetStatus;
 use App\Models\PromptTemplate;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
-use Filament\Actions\EditAction;
+use Filament\Actions\EditAction;use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -82,10 +82,11 @@ class PromptTemplatesTable
                     ->searchable(),
             ])
             ->recordActions([
+                ViewAction::make()
+                    ->label('Ver'),
+
                 EditAction::make()
-                    ->label(fn (PromptTemplate $r): string => $r->status === RuleSetStatus::Draft
-                        ? 'Editar'
-                        : 'Ver'),
+                    ->label('Editar'),
 
                 Action::make('nueva_version')
                     ->label('Nueva version')

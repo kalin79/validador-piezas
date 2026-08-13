@@ -5,6 +5,8 @@ namespace App\Filament\Resources\RuleSets;
 use App\Filament\Resources\RuleSets\Pages\CreateRuleSet;
 use App\Filament\Resources\RuleSets\Pages\EditRuleSet;
 use App\Filament\Resources\RuleSets\Pages\ListRuleSets;
+use App\Filament\Resources\RuleSets\Pages\ViewRuleSet;
+use App\Filament\Resources\RuleSets\Schemas\RuleSetInfolist;
 use App\Filament\Resources\RuleSets\Schemas\RuleSetForm;
 use App\Filament\Resources\RuleSets\Tables\RuleSetsTable;
 use App\Models\RuleSet;
@@ -37,6 +39,11 @@ class RuleSetResource extends Resource
         return RuleSetForm::configure($schema);
     }
 
+    public static function infolist(Schema $schema): Schema
+    {
+        return RuleSetInfolist::configure($schema);
+    }
+
     public static function table(Table $table): Table
     {
         return RuleSetsTable::configure($table);
@@ -54,6 +61,7 @@ class RuleSetResource extends Resource
         return [
             'index' => ListRuleSets::route('/'),
             'create' => CreateRuleSet::route('/create'),
+            'view' => ViewRuleSet::route('/{record}'),
             'edit' => EditRuleSet::route('/{record}/edit'),
         ];
     }
