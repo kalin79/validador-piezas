@@ -6,20 +6,23 @@ namespace App\Filament\Resources\Submissions\RelationManagers;
 
 use App\Enums\Severity;
 use App\Enums\ValidationStatus;
-use App\Enums\VerdictStatus;
 use App\Jobs\RunValidation;
 use App\Models\Asset;
 use App\Models\ValidationRun;
+use App\Services\Director\EnvioAlDirector;
+use App\Support\Fecha;
+use App\Support\Refresco;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class AssetsRelationManager extends RelationManager
 {
@@ -31,7 +34,7 @@ class AssetsRelationManager extends RelationManager
     {
         return $table
             // Se refresca sola mientras haya validaciones en curso.
-            ->poll(fn (): ?string => \App\Support\Refresco::mientrasHayaValidaciones())
+            ->poll(fn (): ?string => Refresco::mientrasHayaValidaciones())
             ->recordTitleAttribute('original_filename')
             // Se cargan por adelantado la ultima ejecucion con su veredicto y
             // sus hallazgos: sin esto, cada fila dispara tres consultas y con
@@ -40,6 +43,7 @@ class AssetsRelationManager extends RelationManager
                 ->with([
                     'latestRun.verdict',
                     'latestRun.findings',
+                    'latestDirectorReview.decider',
                 ])
                 // Cuenta agregada en la misma consulta. Sirve para rotular el
                 // boton de historial sin traer las ejecuciones completas.
@@ -67,6 +71,16 @@ class AssetsRelationManager extends RelationManager
                     ->badge()
                     ->state(fn (Asset $record): string => $record->latestRun?->verdict?->status->label() ?? 'Sin veredicto')
                     ->color(fn (Asset $record): string => $record->latestRun?->verdict?->status->color() ?? 'gray'),
+
+                TextColumn::make('director')
+                    ->label('Director')
+                    ->badge()
+                    ->state(fn (Asset $record): string => $record->latestDirectorReview?->status->label() ?? 'Sin enviar')
+                    ->color(fn (Asset $record): string => $record->latestDirectorReview?->status->color() ?? 'gray')
+                    // El comentario del director a mano, sin abrir nada.
+                    ->tooltip(fn (Asset $record): ?string => $record->latestDirectorReview?->decision_comment
+                        ? ($record->latestDirectorReview->decider?->name ?? 'Director').': '.$record->latestDirectorReview->decision_comment
+                        : null),
 
                 TextColumn::make('puntaje')
                     ->label('Puntaje')
@@ -125,7 +139,7 @@ class AssetsRelationManager extends RelationManager
                 // una pieza revalidada hace un minuto, que es peor que no tenerla.
                 TextColumn::make('ultima_validacion')
                     ->label('Ultima validacion')
-                    ->state(fn (Asset $record): string => \App\Support\Fecha::local($record->latestRun?->created_at)?->format('d/m/Y H:i') ?? '—')
+                    ->state(fn (Asset $record): string => Fecha::local($record->latestRun?->created_at)?->format('d/m/Y H:i') ?? '—')
                     ->description(fn (Asset $record): string => self::descripcionUltimaValidacion($record))
                     // Ordena por la fecha de la ultima ejecucion con una
                     // subconsulta correlacionada: no hay columna que ordenar.
@@ -175,6 +189,59 @@ class AssetsRelationManager extends RelationManager
                     ->modalContent(fn (Asset $record) => view('filament.modals.historial', [
                         'asset' => $record,
                     ])),
+
+                // Las reglas (veredicto, pendiente, director asignado) viven en
+                // EnvioAlDirector. Aqui el boton se deshabilita y muestra el
+                // motivo, en vez de esconderse: una pieza que no se puede
+                // enviar tiene que decir por que.
+                Action::make('enviar_director')
+                    ->label('Enviar al director')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->color('primary')
+                    ->visible(fn (): bool => auth()->user()?->hasPermissionTo('director.send') === true)
+                    ->disabled(fn (Asset $record): bool => app(EnvioAlDirector::class)->motivoParaNoEnviar($record, auth()->user()) !== null)
+                    ->tooltip(fn (Asset $record): ?string => app(EnvioAlDirector::class)->motivoParaNoEnviar($record, auth()->user()))
+                    ->modalHeading(fn (Asset $record): string => 'Enviar al director: '.$record->original_filename)
+                    ->modalDescription('El director recibe un aviso en el panel y por correo. Puede aprobarla o devolverla con comentarios.')
+                    ->modalSubmitActionLabel('Enviar')
+                    ->schema([
+                        Textarea::make('nota')
+                            ->label('Nota para el director (opcional)')
+                            ->placeholder('Contexto que ayude a decidir: fecha de salida, cambio respecto a la version anterior...')
+                            ->maxLength(1000)
+                            ->rows(3),
+                    ])
+                    ->action(function (Asset $record, array $data): void {
+                        try {
+                            app(EnvioAlDirector::class)->enviar($record, auth()->user(), $data['nota'] ?? null);
+                        } catch (RuntimeException $e) {
+                            Notification::make()->title('No se envio')->body($e->getMessage())->danger()->send();
+
+                            return;
+                        }
+
+                        Notification::make()->title('Enviada al director')->success()->send();
+                    }),
+
+                Action::make('retirar_director')
+                    ->label('Retirar envio')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('gray')
+                    ->visible(fn (Asset $record): bool => $record->latestDirectorReview?->estaPendiente() === true
+                        && ((int) $record->latestDirectorReview->sent_by === (int) auth()->id() || auth()->user()?->hasRole('super_admin') === true))
+                    ->requiresConfirmation()
+                    ->modalDescription('La pieza sale de la bandeja del director. Queda registrado que la retiraste.')
+                    ->action(function (Asset $record): void {
+                        try {
+                            app(EnvioAlDirector::class)->retirar($record->latestDirectorReview, auth()->user());
+                        } catch (RuntimeException $e) {
+                            Notification::make()->title('No se retiro')->body($e->getMessage())->danger()->send();
+
+                            return;
+                        }
+
+                        Notification::make()->title('Envio retirado')->success()->send();
+                    }),
 
                 Action::make('revalidar')
                     ->label('Revalidar')

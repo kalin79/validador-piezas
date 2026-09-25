@@ -80,6 +80,8 @@ php artisan optimize
 php artisan entorno:verificar        # no debe marcar ningún [CRITICO]
 ```
 
+El envío al director avisa por correo, así que `MAIL_*` tiene que apuntar a un SMTP real. Los correos salen por la cola: si el worker no corre, solo llega el aviso del panel.
+
 Crea el primer super_admin con tinker (`User::create(...)` y luego `->assignRole('super_admin')`), con una contraseña de 12 caracteres o más.
 
 ## 4. Permisos
@@ -173,6 +175,7 @@ php artisan down
 git pull
 composer install --no-dev --optimize-autoloader
 php artisan migrate --force
+php artisan db:seed --class=RolesAndPermissionsSeeder --force   # si la versión trae permisos nuevos
 php artisan optimize
 php artisan queue:restart
 php artisan up

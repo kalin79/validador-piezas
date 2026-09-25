@@ -53,6 +53,17 @@ Para los datos de demostración hay que definir `DEMO_ADMIN_EMAIL` y `DEMO_ADMIN
 | `php artisan archivos:privatizar [--aplicar]` | Mueve archivos antiguos del disco público al privado |
 | `php artisan respaldo:probar` | Restaura el último respaldo en una base temporal y lo verifica |
 
+## Envío al director
+
+Una pieza se envía al director desde su carga, con el botón **Enviar al director** de la fila. El director la aprueba o la devuelve desde **Operación → Director**. Todo queda en la bitácora.
+
+- **Se puede enviar** si el veredicto de la última validación es aprobado o aprobado con observaciones. Si hubo revisión humana, cuenta el veredicto del revisor. Si el botón está deshabilitado, al pasar el cursor se ve el motivo.
+- **No se puede enviar** si la pieza ya tiene un envío pendiente o ya fue aprobada, ni si la marca no tiene ningún director asignado.
+- **Quién decide:** usuarios con el rol `director`, solo sobre las marcas de sus equipos. Nadie decide sobre una pieza que subió o envió.
+- **Devolver** exige un comentario. Después se sube la versión corregida en la misma carga y se envía de nuevo.
+- **Aprobar** queda bloqueado si, después del envío, se revalidó la pieza y el nuevo veredicto ya no la aprueba.
+- **Avisos:** en el panel y por correo, al director cuando recibe una pieza y a quien envió cuando el director decide.
+
 ## Consumo de IA
 
 En el panel: **Operación → Consumo de IA** (permiso `audit.view`; cada usuario ve solo sus clientes). Muestra, por cliente y periodo, las validaciones con IA, los tokens y el costo, con el desglose por marca y por modelo. Se puede exportar a CSV.
@@ -78,7 +89,8 @@ Campos clave de la respuesta de validación:
 
 - `verdict`, `score`.
 - `passed`: `true` solo si el veredicto es "aprobado".
-- `can_send_to_director`: `true` si es aprobado o aprobado con observaciones.
+- `can_send_to_director`: `true` si el veredicto efectivo (el de la revisión humana, si la hubo) es aprobado o aprobado con observaciones.
+- `director`: estado del último envío al director (`pending`, `approved`, `returned`, `withdrawn`) con su comentario, o `null`.
 - `rules.passed_codes`: solo reglas verificadas.
 - `rules.failed_codes`.
 - `rules.not_evaluated_codes` y `rules.not_evaluated_reasons`: qué no se pudo verificar y por qué.

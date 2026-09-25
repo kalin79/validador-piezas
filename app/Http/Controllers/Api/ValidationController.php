@@ -8,6 +8,7 @@ use App\Enums\Severity;
 use App\Enums\VerdictStatus;
 use App\Models\Brand;
 use App\Models\ValidationRun;
+use App\Services\Director\EnvioAlDirector;
 use App\Services\QuickValidation;
 use App\Services\Validation\RuleStatusReport;
 use Illuminate\Http\JsonResponse;
@@ -178,7 +179,9 @@ final class ValidationController
      */
     private function serializar(ValidationRun $run, Brand $brand): array
     {
-        $run->loadMissing(['verdict', 'findings', 'asset']);
+        $run->loadMissing(['verdict', 'findings', 'asset.latestDirectorReview', 'humanReviews']);
+        [$efectivo] = EnvioAlDirector::veredictoEfectivo($run);
+        $envio = $run->asset?->latestDirectorReview;
 
         $meta = (array) ($run->deterministic_results ?? []);
         $veredicto = $run->verdict;
@@ -203,7 +206,19 @@ final class ValidationController
             // Solo una aprobacion limpia habilita el envio. "Requiere revision"
             // y "sin evaluar" nunca cuentan como aprobado.
             'passed' => $veredicto?->status === VerdictStatus::Approved,
-            'can_send_to_director' => $veredicto?->status->habilitaEnvio() ?? false,
+            // Considera la revision humana si la hubo: un "requiere revision"
+            // que un revisor aprobo si se puede enviar. Es condicion necesaria,
+            // no suficiente: el envio real se hace en el panel y ahi se
+            // comprueba el resto (envio pendiente, director asignado).
+            'can_send_to_director' => $efectivo?->habilitaEnvio() ?? false,
+            'effective_verdict' => $efectivo?->value,
+            'director' => $envio === null ? null : [
+                'status' => $envio->status->value,
+                'status_label' => $envio->status->label(),
+                'comment' => $envio->decision_comment,
+                'sent_at' => $envio->created_at?->toIso8601String(),
+                'decided_at' => $envio->decided_at?->toIso8601String(),
+            ],
 
             'brand' => [
                 'ref' => $brand->client->slug.'/'.$brand->slug,

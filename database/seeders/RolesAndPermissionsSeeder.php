@@ -31,6 +31,10 @@ class RolesAndPermissionsSeeder extends Seeder
         'team.manage',
         'brand.manage',
         'client.manage',
+        // Flujo del director: quien envia y quien decide son permisos
+        // separados a proposito.
+        'director.send',
+        'director.decide',
     ];
 
     public function run(): void
@@ -48,6 +52,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'validation.trigger',
                 'validation.view',
                 'knowledge.view',
+                'director.send',
             ],
             'reviewer' => [
                 'submission.create',
@@ -58,6 +63,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'review.perform',
                 'review.override',
                 'knowledge.view',
+                'director.send',
             ],
             'brand_admin' => [
                 // Un administrador de marca tambien trabaja: sin estos dos no
@@ -76,6 +82,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'knowledge.publish',
                 'audit.view',
                 'user.manage',
+                'director.send',
             ],
             // Solo este rol publica reglas corporativas: un cambio hecho para una
             // marca no debe propagarse al resto sin aprobacion del nivel cliente.
@@ -90,6 +97,15 @@ class RolesAndPermissionsSeeder extends Seeder
                 'user.manage',
                 'team.manage',
                 'brand.manage',
+            ],
+            // Aprueba o devuelve las piezas que le envian, solo de las marcas de
+            // sus equipos. No carga, no valida y no cambia veredictos: su
+            // decision es otra capa, posterior a la del validador.
+            'director' => [
+                'submission.view_brand',
+                'validation.view',
+                'knowledge.view',
+                'director.decide',
             ],
             // Observador puro: ni siquiera puede disparar validaciones.
             'auditor' => [

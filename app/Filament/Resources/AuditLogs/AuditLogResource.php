@@ -62,6 +62,10 @@ class AuditLogResource extends Resource
         'token.created' => 'Token creado',
         'token.revoked' => 'Token revocado',
         'consumo.exported' => 'Consumo exportado',
+        'director.sent' => 'Enviada al director',
+        'director.approved' => 'Aprobada por el director',
+        'director.returned' => 'Devuelta por el director',
+        'director.withdrawn' => 'Envio al director retirado',
     ];
 
     public static function canAccess(): bool

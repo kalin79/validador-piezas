@@ -56,6 +56,16 @@ class Asset extends Model
         return $this->hasOne(ValidationRun::class)->latestOfMany();
     }
 
+    public function directorReviews(): HasMany
+    {
+        return $this->hasMany(DirectorReview::class)->latest('id');
+    }
+
+    public function latestDirectorReview(): HasOne
+    {
+        return $this->hasOne(DirectorReview::class)->latestOfMany();
+    }
+
     /**
      * Otras piezas de la misma marca con el mismo contenido binario.
      */
