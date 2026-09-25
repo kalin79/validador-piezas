@@ -28,7 +28,9 @@ return [
 
     'model' => env('AI_MODEL', 'claude-sonnet-5'),
 
-    'max_tokens' => (int) env('AI_MAX_TOKENS', 4096),
+    // Techo, no costo: solo se paga lo que el modelo genera. Con rule_assessments
+    // (un pronunciamiento por regla) 4096 se quedaba corto y la respuesta se cortaba.
+    'max_tokens' => (int) env('AI_MAX_TOKENS', 16000),
 
     /*
      * Temperatura de muestreo.

@@ -244,6 +244,31 @@ class VerdictCalculatorUmbralesTest extends TestCase
         // y uno nuevo se explicarian con la misma formula siendo distintos.
         $resultado = (new VerdictCalculator())->calculate($this->hallazgos([]), null, 5);
 
-        $this->assertSame(4, $resultado['scoring_formula_snapshot']['formula_version']);
+        $this->assertSame(5, $resultado['scoring_formula_snapshot']['formula_version']);
+    }
+
+    public function test_una_regla_resta_una_sola_vez_por_su_hallazgo_mas_grave(): void
+    {
+        // Caso real (validacion 90): PAL-501 con 2 mayores y 4 menores restaba
+        // 50 puntos. Ahora resta solo su hallazgo mas grave (mayor = 15).
+        $f = function (string $sev, ?string $codigo): Finding {
+            $x = new Finding();
+            $x->severity = Severity::from($sev);
+            $x->category = RuleCategory::Palette;
+            $x->rule_code = $codigo;
+
+            return $x;
+        };
+
+        $hallazgos = collect([
+            $f('major', 'PAL-501'), $f('major', 'PAL-501'),
+            $f('minor', 'PAL-501'), $f('minor', 'PAL-501'), $f('minor', 'PAL-501'), $f('minor', 'PAL-501'),
+            $f('minor', null), // aviso sin regla: resta por separado
+        ]);
+
+        $r = (new \App\Services\Validation\VerdictCalculator())->calculate($hallazgos);
+
+        $this->assertEquals(80.0, $r['score']); // 100 - 15 (PAL-501) - 5 (sin regla)
+        $this->assertSame(2, $r['major_count']); // los conteos siguen siendo por hallazgo
     }
 }

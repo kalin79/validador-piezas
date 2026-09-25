@@ -57,13 +57,16 @@ final class RuleStatusReport
 
         /** @var Collection<int, Finding> $findings */
         $findings = $run->findings ?? collect();
-        $porRegla = $findings->groupBy('rule_id');
+        $porRegla = $findings->filter(fn (Finding $f): bool => $f->rule_id !== null)->groupBy('rule_id');
         $porCodigo = $findings->groupBy('rule_code');
 
         foreach (($run->resolved_rules_snapshot ?? []) as $r) {
             $codigo = (string) ($r['code'] ?? '?');
 
-            $deLaRegla = collect($porRegla[$r['rule_id'] ?? null] ?? []);
+            // Solo se busca por id si la regla lo tiene: con un id nulo, el
+            // agrupamiento juntaria todos los hallazgos sin regla (avisos
+            // sueltos) y la regla apareceria incumplida sin serlo.
+            $deLaRegla = isset($r['rule_id']) ? collect($porRegla[$r['rule_id']] ?? []) : collect();
 
             if ($deLaRegla->isEmpty()) {
                 $deLaRegla = collect($porCodigo[$codigo] ?? []);
@@ -92,9 +95,11 @@ final class RuleStatusReport
 
                 if ($outcome === RuleOutcome::Evaluated) {
                     $estado = self::CUMPLE;
-                    $detalle = ($r['type'] ?? '') === 'deterministic'
+                    // "No aplica: ..." se muestra tal cual: es una conclusion
+                    // con su motivo, no un cumplimiento generico.
+                    $detalle = filled($registro['reason'] ?? null) ? (string) $registro['reason'] : (($r['type'] ?? '') === 'deterministic'
                         ? 'medida por codigo, sin desviacion'
-                        : 'juzgada por el modelo con evidencia, sin incumplimiento';
+                        : 'juzgada por el modelo con evidencia, sin incumplimiento');
                 } else {
                     $estado = self::PENDIENTE;
                     $detalle = strtolower($outcome->label()).': '.($registro['reason'] ?? 'ningun motor la evaluo');

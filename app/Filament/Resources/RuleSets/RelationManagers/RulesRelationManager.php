@@ -327,6 +327,18 @@ class RulesRelationManager extends RelationManager
     /**
      * Un conjunto publicado es inmutable: sus reglas no se tocan.
      */
+    /**
+     * Filament deja las reglas en solo lectura en la pagina "Ver" del
+     * conjunto, aunque sea un borrador. Tras crear una version nueva la gente
+     * entraba por "Ver" y encontraba todo bloqueado. Aqui manda el estado del
+     * conjunto: borrador = editable, publicado o retirado = solo lectura, en
+     * cualquier pagina.
+     */
+    public function isReadOnly(): bool
+    {
+        return ! self::isEditable($this->getOwnerRecord());
+    }
+
     private static function isEditable(RuleSet $ruleSet): bool
     {
         return $ruleSet->status === RuleSetStatus::Draft;

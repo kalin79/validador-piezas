@@ -27,6 +27,10 @@ final class AiFindingMapper
     public function __construct(
         private float $minConfidence = 0.4,
         private float $doubtThreshold = 0.6,
+        private float $minorComplianceThreshold = 0.5,
+        // Decision de negocio (25/09/2026), alineada con la escala del prompt:
+        // de 0.7 en adelante es "evidencia solida".
+        private float $criticalThreshold = 0.7,
     ) {}
 
     /**
@@ -45,6 +49,8 @@ final class AiFindingMapper
         $descartados = [];
         $conHallazgo = [];
         $dudosasBloqueadas = [];
+        $sospechasDebiles = [];
+        $declaraciones = $this->declaraciones($data);
 
         foreach ($data['findings'] ?? [] as $bruto) {
             if (! is_array($bruto)) {
@@ -80,9 +86,43 @@ final class AiFindingMapper
 
             if ($confianza < $this->minConfidence) {
                 $descartados[] = sprintf('%s descartado por confianza %.2f', $codigo, $confianza);
-                // El modelo sospecha algo pero no lo sostiene: la regla no se
-                // puede dar por cumplida.
-                $dudosasBloqueadas[$codigo] = sprintf('El modelo sospecho un incumplimiento con confianza %.2f, insuficiente para afirmarlo o descartarlo.', $confianza);
+                // Por debajo de 0.4 el propio modelo no lo sostiene (ver la
+                // escala en AiEvaluator). Se guarda como sospecha debil: solo
+                // deja la regla pendiente si NO hay una declaracion firme de
+                // "cumple" o "no aplica" que alcance su umbral.
+                $sospechasDebiles[$codigo] = sprintf('El modelo sospecho un incumplimiento con confianza %.2f, insuficiente para afirmarlo o descartarlo.', $confianza);
+
+                continue;
+            }
+
+            // Reglas criticas (bloqueantes, mayores, no anulables): un
+            // incumplimiento se afirma solo con evidencia solida (>= 0.7). Por
+            // debajo, "otra persona podria concluir distinto": no se rechaza
+            // ni se aprueba, decide una persona.
+            if ($this->esCritica($regla) && $confianza < $this->criticalThreshold) {
+                $descartados[] = sprintf('%s: hallazgo con confianza %.2f en regla critica, va a revision humana', $codigo, $confianza);
+                $dudosasBloqueadas[$codigo] = sprintf(
+                    'El modelo reporto un incumplimiento con confianza %.2f; en una regla %s se exige %.2f para afirmarlo.',
+                    $confianza,
+                    $regla->is_locked ? 'no anulable' : $regla->severity->label(),
+                    $this->criticalThreshold,
+                );
+
+                continue;
+            }
+
+            // Incoherencia: el modelo registra un incumplimiento pero en su
+            // pronunciamiento dice que no puede determinarlo o que la regla no
+            // aplica. Un "no se" no puede restar puntos como si fuera un
+            // incumplimiento: se descarta el hallazgo y la regla queda para
+            // revision humana.
+            $estadoDeclarado = (string) ($declaraciones[$codigo]['status'] ?? '');
+
+            if (in_array($estadoDeclarado, ['no_determinable', 'no_aplica'], true)) {
+                $descartados[] = sprintf('%s descartado: el modelo lo registro como hallazgo pero declaro "%s"', $codigo, $estadoDeclarado);
+                $dudosasBloqueadas[$codigo] = $estadoDeclarado === 'no_determinable'
+                    ? 'El modelo declaro que no puede determinarlo, aunque registro un hallazgo: no se cuenta como incumplimiento.'
+                    : 'El modelo declaro que la regla no aplica, pero registro un hallazgo: respuesta incoherente.';
 
                 continue;
             }
@@ -127,7 +167,7 @@ final class AiFindingMapper
         return [
             'findings' => $findings,
             'discarded' => $descartados,
-            'coverage' => $this->cobertura($data, $porCodigo, $conHallazgo, $dudosasBloqueadas),
+            'coverage' => $this->cobertura($data, $porCodigo, $conHallazgo, $dudosasBloqueadas, $sospechasDebiles),
         ];
     }
 
@@ -144,16 +184,9 @@ final class AiFindingMapper
      * @param  array<string, string>  $dudosas
      * @return array<string, array{outcome: RuleOutcome, reason: string|null}>
      */
-    private function cobertura(array $data, Collection $reglas, array $conHallazgo, array $dudosas): array
+    private function cobertura(array $data, Collection $reglas, array $conHallazgo, array $dudosas, array $sospechasDebiles = []): array
     {
-        $declaraciones = [];
-
-        foreach (is_array($data['rule_assessments'] ?? null) ? $data['rule_assessments'] : [] as $a) {
-            if (is_array($a) && isset($a['rule_code'])) {
-                $declaraciones[(string) $a['rule_code']] = $a;
-            }
-        }
-
+        $declaraciones = $this->declaraciones($data);
         $resultado = [];
 
         foreach ($reglas as $codigo => $regla) {
@@ -176,7 +209,7 @@ final class AiFindingMapper
             if ($a === null) {
                 $resultado[$codigo] = [
                     'outcome' => RuleOutcome::NotDeterminable,
-                    'reason' => 'El modelo no se pronuncio sobre esta regla.',
+                    'reason' => $sospechasDebiles[$codigo] ?? 'El modelo no se pronuncio sobre esta regla.',
                 ];
 
                 continue;
@@ -197,9 +230,25 @@ final class AiFindingMapper
                     'outcome' => RuleOutcome::NotDeterminable,
                     'reason' => 'El modelo marco la regla como incumplida sin registrar el hallazgo.',
                 ],
-                $estado === 'cumple' && ($confianza === null || $confianza < $this->doubtThreshold) => [
+                // "No aplica" es una conclusion, no una duda: la condicion de la
+                // regla no se da en la pieza (por ejemplo, exige indicar el
+                // precio y la pieza no menciona precio). Exige explicar por que.
+                $estado === 'no_aplica' && $motivo !== null => [
+                    'outcome' => RuleOutcome::Evaluated,
+                    'reason' => 'No aplica: '.$motivo,
+                ],
+                $estado === 'no_aplica' => [
                     'outcome' => RuleOutcome::NotDeterminable,
-                    'reason' => sprintf('El modelo la considera cumplida con confianza %s, insuficiente para afirmarlo.', $confianza === null ? 'invalida' : number_format($confianza, 2)),
+                    'reason' => 'El modelo dijo que la regla no aplica sin explicar por que.',
+                ],
+                $estado === 'cumple' && ($confianza === null || $confianza < $this->umbralCumple($regla)) => [
+                    'outcome' => RuleOutcome::NotDeterminable,
+                    'reason' => sprintf(
+                        'El modelo la considera cumplida con confianza %s; para una regla %s se exige %.2f.',
+                        $confianza === null ? 'invalida' : number_format($confianza, 2),
+                        $regla->is_locked ? 'no anulable' : $regla->severity->label(),
+                        $this->umbralCumple($regla),
+                    ),
                 ],
                 $estado === 'cumple' => ['outcome' => RuleOutcome::Evaluated, 'reason' => null],
                 default => [
@@ -207,9 +256,53 @@ final class AiFindingMapper
                     'reason' => "Estado desconocido en la declaracion del modelo: '{$estado}'.",
                 ],
             };
+
+            // Una sospecha debil solo pesa si no hubo una conclusion firme.
+            if (isset($sospechasDebiles[$codigo]) && $resultado[$codigo]['outcome'] !== RuleOutcome::Evaluated) {
+                $resultado[$codigo] = ['outcome' => RuleOutcome::NotDeterminable, 'reason' => $sospechasDebiles[$codigo]];
+            }
         }
 
         return $resultado;
+    }
+
+    /**
+     * Confianza minima para aceptar un "cumple", segun lo que esta en juego.
+     *
+     * Decision de negocio (25/09/2026): en reglas menores o informativas, un
+     * "cumple" dudoso cuesta poco si esta equivocado; en bloqueantes, mayores y
+     * no anulables, dar por cumplida una regla que no lo esta puede publicar
+     * algo que expone al cliente. Por eso el umbral es distinto.
+     */
+    private function umbralCumple(Rule $regla): float
+    {
+        return $this->esCritica($regla) ? $this->criticalThreshold : $this->minorComplianceThreshold;
+    }
+
+    /**
+     * Bloqueantes, mayores y no anulables: donde equivocarse cuesta caro en
+     * cualquiera de las dos direcciones (rechazar de mas o publicar de mas).
+     */
+    private function esCritica(Rule $regla): bool
+    {
+        return $regla->is_locked || in_array($regla->severity, [Severity::Blocking, Severity::Major], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, array<string, mixed>>
+     */
+    private function declaraciones(array $data): array
+    {
+        $declaraciones = [];
+
+        foreach (is_array($data['rule_assessments'] ?? null) ? $data['rule_assessments'] : [] as $a) {
+            if (is_array($a) && isset($a['rule_code'])) {
+                $declaraciones[(string) $a['rule_code']] = $a;
+            }
+        }
+
+        return $declaraciones;
     }
 
     private function confianza(mixed $valor): ?float

@@ -149,8 +149,8 @@ final class AiEvaluator
                 'rule_code' => ['type' => 'string', 'description' => 'Codigo exacto de la regla de juicio.'],
                 'status' => [
                     'type' => 'string',
-                    'enum' => ['cumple', 'incumple', 'no_determinable'],
-                    'description' => 'cumple solo si hay base visible en la pieza. Ante cualquier duda, no_determinable.',
+                    'enum' => ['cumple', 'incumple', 'no_aplica', 'no_determinable'],
+                    'description' => 'cumple solo si hay base visible en la pieza. no_aplica si la condicion de la regla no se da en la pieza (explica por que). Ante cualquier duda, no_determinable.',
                 ],
                 'evidence' => ['type' => 'string', 'description' => 'Lo que se ve en la pieza que sostiene el estado, o por que no se puede determinar.'],
                 'confidence' => ['type' => 'number', 'minimum' => 0, 'maximum' => 1],
@@ -192,8 +192,13 @@ final class AiEvaluator
             .implode(', ', $codigos).".\n"
             ."- status=cumple solo si puedes ver en la pieza lo que lo demuestra; cita esa evidencia.\n"
             ."- status=incumple exige registrar tambien el hallazgo en findings.\n"
-            ."- status=no_determinable si el texto no se lee, falta informacion o no estas seguro. No adivines: es preferible no_determinable a una afirmacion sin base.\n"
-            .'- confidence entre 0 y 1.';
+            ."- status=no_aplica si la condicion de la regla no se da en esta pieza (por ejemplo, la regla trata precios y la pieza no menciona precio). Explica en evidence por que no aplica. No registres hallazgo.\n"
+            ."- status=no_determinable si el texto no se lee, falta informacion (por ejemplo el canal) o no estas seguro. No adivines y NO registres hallazgo: un hallazgo es una afirmacion de incumplimiento, no una duda.\n"
+            ."ESCALA DE CONFIANZA (usala de forma consistente):\n"
+            ."- 0.9 a 1.0: lo ves explicitamente en la pieza (texto legible, elemento claro).\n"
+            ."- 0.7 a 0.89: evidencia visual solida, con alguna interpretacion menor.\n"
+            ."- 0.5 a 0.69: inferencia razonable, pero otra persona podria concluir distinto.\n"
+            ."- menos de 0.5: no lo sostienes; en ese caso usa no_determinable, no cumple.";
     }
 
     /**

@@ -99,11 +99,35 @@ final class VerdictCalculator
         $mayores = $findings->where('severity', Severity::Major)->count();
         $menores = $findings->where('severity', Severity::Minor)->count();
 
+        /*
+         * Una regla resta una sola vez, por su hallazgo mas grave.
+         *
+         * Decision de negocio (25/09/2026). Antes restaba cada hallazgo: la
+         * regla de paleta generaba uno por color fuera de la guia mas uno de
+         * cobertura que resumia esos mismos colores, y sola le quitaba 50
+         * puntos a una pieza con fotografia. El puntaje medía cuantos colores
+         * tiene la foto, no cuantas reglas se incumplen. Todos los hallazgos
+         * se siguen mostrando como detalle.
+         *
+         * Los hallazgos sin codigo de regla (avisos sueltos) restan cada uno.
+         */
         $penalizacion = 0.0;
+        $peorPorRegla = [];
 
         foreach ($findings as $finding) {
-            $penalizacion += $pesos[$finding->severity->value] ?? 0.0;
+            $peso = $pesos[$finding->severity->value] ?? 0.0;
+            $codigo = $finding->rule_code;
+
+            if (blank($codigo)) {
+                $penalizacion += $peso;
+
+                continue;
+            }
+
+            $peorPorRegla[$codigo] = max($peorPorRegla[$codigo] ?? 0.0, $peso);
         }
+
+        $penalizacion += array_sum($peorPorRegla);
 
         $puntaje = max(0.0, 100.0 - $penalizacion);
 
@@ -168,10 +192,12 @@ final class VerdictCalculator
                 'rules_applied' => $rulesApplied,
                 'rules_evaluated' => $evaluadas,
                 'pending_rules' => $pending,
-                // v4: cobertura por regla. Con reglas sin verificar el estado
+                'penalty_by_rule' => $peorPorRegla,
+                // v5: cada regla resta una vez, por su hallazgo mas grave.
+                // v4: cobertura por regla; con reglas sin verificar el estado
                 // es "requiere revision" y nunca una aprobacion.
-                'formula_version' => 4,
-                'rule' => 'puntaje de calidad = 100 - suma(peso por severidad); los bloqueantes no penalizan el puntaje pero fuerzan rechazo; bajo rejection_threshold se rechaza aunque no haya bloqueantes; si alguna regla aplicable no se pudo verificar el estado es "requiere revision" (o "sin evaluar" si no se verifico ninguna); bajo observation_threshold se aprueba con observaciones; cero reglas resueltas produce "sin evaluar"',
+                'formula_version' => 5,
+                'rule' => 'puntaje de calidad = 100 - suma(peso del hallazgo mas grave de cada regla) - suma(peso de hallazgos sin regla); los bloqueantes no penalizan el puntaje pero fuerzan rechazo; bajo rejection_threshold se rechaza aunque no haya bloqueantes; si alguna regla aplicable no se pudo verificar el estado es "requiere revision" (o "sin evaluar" si no se verifico ninguna); bajo observation_threshold se aprueba con observaciones; cero reglas resueltas produce "sin evaluar"',
             ],
         ];
     }
