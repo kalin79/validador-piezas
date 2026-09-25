@@ -16,7 +16,7 @@ return [
      | 'fake' devuelve respuestas simuladas sin llamar a la API ni gastar
      | tokens. Sirve para probar el flujo completo antes de conectar la clave.
      */
-    'driver' => env('AI_DRIVER', 'fake'),
+    'driver' => env('AI_DRIVER', 'anthropic'),
 
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),

@@ -45,7 +45,7 @@ class BrandsTable
             ->filters([
                 SelectFilter::make('client_id')
                     ->label('Cliente')
-                    ->relationship('client', 'name')
+                    ->relationship('client', 'name', fn (\Illuminate\Database\Eloquent\Builder $query) => \App\Support\Alcance::clientesVisibles($query))
                     ->searchable()
                     ->preload(),
 

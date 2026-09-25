@@ -42,4 +42,21 @@ final class AiException extends RuntimeException
             $max / 1048576,
         ));
     }
+
+    public static function truncated(?string $stopReason): self
+    {
+        return new self(sprintf(
+            'La respuesta del modelo se corto antes de terminar (stop_reason=%s). '
+            .'Una lista de hallazgos incompleta no se usa: las reglas de juicio quedan sin evaluar.',
+            $stopReason ?? 'desconocido',
+        ));
+    }
+
+    public static function productionFake(): self
+    {
+        return new self(
+            'AI_DRIVER=fake no esta permitido en produccion: el driver simulado inventa resultados. '
+            .'Configura AI_DRIVER=anthropic y ANTHROPIC_API_KEY.'
+        );
+    }
 }

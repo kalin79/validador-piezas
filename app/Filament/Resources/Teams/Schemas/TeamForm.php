@@ -6,7 +6,9 @@ namespace App\Filament\Resources\Teams\Schemas;
 
 use App\Models\Brand;
 use App\Models\Client;
+use App\Support\Alcance;
 use Filament\Forms\Components\Select;
+use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -54,7 +56,8 @@ class TeamForm
                 ->schema([
                     Select::make('users')
                         ->label('Usuarios')
-                        ->relationship('users', 'name')
+                        ->relationship('users', 'name', modifyQueryUsing: fn (Builder $query): Builder => Alcance::usuarios($query))
+                        ->rules([Alcance::reglaSoloNuevosPermitidos('users', fn () => Alcance::usuarios(\App\Models\User::query())->pluck('users.id'))])
                         ->multiple()
                         ->searchable()
                         ->preload(),
@@ -66,7 +69,10 @@ class TeamForm
                 ->schema([
                     Select::make('clients')
                         ->label('Clientes completos')
-                        ->relationship('clients', 'name')
+                        // Solo clientes con acceso completo: conceder un cliente
+                        // entero exige tenerlo entero.
+                        ->relationship('clients', 'name', modifyQueryUsing: fn (Builder $query): Builder => Alcance::clientesCompletos($query))
+                        ->rules([Alcance::reglaSoloNuevosPermitidos('clients', fn () => auth()->user()->fullAccessClientIds())])
                         ->multiple()
                         ->searchable()
                         ->preload()
@@ -74,7 +80,8 @@ class TeamForm
 
                     Select::make('brands')
                         ->label('Marcas puntuales')
-                        ->relationship('brands', 'name')
+                        ->relationship('brands', 'name', modifyQueryUsing: fn (Builder $query): Builder => Alcance::marcas($query))
+                        ->rules([Alcance::reglaSoloNuevosPermitidos('brands', fn () => auth()->user()->accessibleBrandIds())])
                         ->multiple()
                         ->searchable()
                         ->preload()

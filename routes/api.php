@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Route;
 
 
 
-Route::middleware(['auth:sanctum', 'throttle:validaciones'])->prefix('v1')->group(function (): void {
+Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureApiUserIsActive::class, 'throttle:validaciones'])->prefix('v1')->group(function (): void {
     Route::post('/validaciones', [ValidationController::class, 'store']);
     Route::get('/validaciones/{publicId}', [ValidationController::class, 'show']);
     Route::get('/marcas', [ValidationController::class, 'brands']);
@@ -52,7 +52,7 @@ Route::middleware('throttle:20,1')->prefix('v1')->group(function (): void {
 | Igual lleva su propio limite, mas holgado, para que un plugin con un bucle mal
 | escrito no se convierta en una carga.
 */
-Route::middleware(['auth:sanctum', 'throttle:60,1'])->prefix('v1')->group(function (): void {
+Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureApiUserIsActive::class, 'throttle:60,1'])->prefix('v1')->group(function (): void {
     Route::get('/yo', [ValidationController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
 });

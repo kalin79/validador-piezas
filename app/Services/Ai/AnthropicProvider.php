@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Ai;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -83,7 +84,12 @@ final class AnthropicProvider implements VisionProvider
                 (int) config('ai.anthropic.max_retries', 3),
                 throw: false,
                 sleepMilliseconds: fn (int $intento): int => 1000 * (2 ** ($intento - 1)),
-                when: fn (\Throwable $e): bool => $e instanceof ConnectionException,
+                // Se reintenta lo transitorio: red, limite de uso (429),
+                // sobrecarga (529) y errores del servidor (5xx). Un 400 o un
+                // 401 no se arreglan reintentando.
+                when: fn (\Throwable $e): bool => $e instanceof ConnectionException
+                    || ($e instanceof RequestException
+                        && in_array($e->response->status(), [429, 500, 502, 503, 504, 529], true)),
             )
             ->post(rtrim((string) config('ai.anthropic.base_url'), '/').'/v1/messages', $payload);
 
@@ -97,6 +103,20 @@ final class AnthropicProvider implements VisionProvider
         }
 
         $cuerpo = $respuesta->json();
+        $stopReason = isset($cuerpo['stop_reason']) ? (string) $cuerpo['stop_reason'] : null;
+
+        // Con tool_choice forzado, una salida completa termina en tool_use.
+        // Cualquier otro motivo (max_tokens sobre todo) significa que el JSON
+        // de la herramienta puede estar incompleto: menos hallazgos de los
+        // reales, que se leerian como una pieza mejor de lo que es.
+        if ($stopReason !== 'tool_use') {
+            Log::warning('Respuesta del modelo sin terminar en tool_use', [
+                'stop_reason' => $stopReason,
+                'model' => $model,
+            ]);
+
+            throw AiException::truncated($stopReason);
+        }
 
         $bloque = collect($cuerpo['content'] ?? [])
             ->firstWhere('type', 'tool_use');
@@ -115,6 +135,7 @@ final class AnthropicProvider implements VisionProvider
             inputTokens: $entrada,
             outputTokens: $salida,
             costUsd: round(TokenEstimator::costUsd($model, $entrada, $salida), 6),
+            stopReason: $stopReason,
         );
     }
 

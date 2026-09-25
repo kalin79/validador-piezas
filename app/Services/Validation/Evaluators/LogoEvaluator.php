@@ -23,13 +23,26 @@ use App\Services\Validation\FindingDraft;
  */
 final class LogoEvaluator
 {
+    private const MIN_CONFIDENCE_ABSENCE = 0.6;
+
+    /**
+     * Compatibilidad: solo los hallazgos.
+     *
+     * @param  array<string, mixed>  $logoData
+     * @return array<int, FindingDraft>
+     */
+    public function evaluate(Asset $asset, array $logoData, ?string $channel, ?Rule $regla = null): array
+    {
+        return $this->evaluateWithCoverage($asset, $logoData, $channel, $regla)['findings'];
+    }
+
     /**
      * @param  array<string, mixed>  $logoData  bloque 'logo' de la salida del modelo
      * @param  Rule|null  $regla  regla de categoria "activos obligatorios" que
      *                            ampara estos hallazgos, si el conjunto la tiene
-     * @return array<int, FindingDraft>
+     * @return array{findings: array<int, FindingDraft>, undetermined: string|null}
      */
-    public function evaluate(Asset $asset, array $logoData, ?string $channel, ?Rule $regla = null): array
+    public function evaluateWithCoverage(Asset $asset, array $logoData, ?string $channel, ?Rule $regla = null): array
     {
         /*
          * Este evaluador no recibe reglas: mide contra los activos de marca y
@@ -56,15 +69,34 @@ final class LogoEvaluator
             ->where('brand_id', $asset->brand_id)
             ->where('is_active', true)
             ->get()
-            ->filter(fn (BrandAsset $a): bool => $a->appliesToChannel($channel));
+            ->filter(fn (BrandAsset $a): bool => $a->appliesToChannel($channel))
+            // El modelo devuelve un solo bloque 'logo'. Usarlo para decidir si
+            // hay un sello o una marca de agua es afirmar algo que nadie midio.
+            ->filter(fn (BrandAsset $a): bool => $a->type->isLogo());
 
         if ($obligatorios->isEmpty()) {
-            return [];
+            return ['findings' => [], 'undetermined' => null];
         }
 
-        $detectado = (bool) ($logoData['detected'] ?? false);
-        $confianza = (float) ($logoData['confidence'] ?? 0);
-        $caja = $logoData['bounding_box'] ?? null;
+        $detectado = ($logoData['detected'] ?? null) === true;
+        $confianza = is_numeric($logoData['confidence'] ?? null) ? (float) $logoData['confidence'] : null;
+        $caja = $this->cajaValida($logoData['bounding_box'] ?? null);
+        $sinDeterminar = null;
+
+        if (! $detectado && ($confianza === null || $confianza < self::MIN_CONFIDENCE_ABSENCE)) {
+            // Una ausencia dudosa no rechaza la pieza: se manda a revision.
+            return [
+                'findings' => [],
+                'undetermined' => sprintf(
+                    'El modelo no detecto el logo, pero con confianza %s: no alcanza para afirmar que falta.',
+                    $confianza === null ? 'no informada' : number_format($confianza, 2),
+                ),
+            ];
+        }
+
+        if ($detectado && $caja === null) {
+            $sinDeterminar = 'El modelo detecto el logo pero sus coordenadas no son validas (se esperan x, y, width, height entre 0 y 1): no se midieron tamano, resguardo ni posicion.';
+        }
 
         $findings = [];
 
@@ -82,7 +114,7 @@ final class LogoEvaluator
                         evidenceData: [
                             'brand_asset_id' => $activo->id,
                             'detected' => false,
-                            'confidence' => round($confianza, 3),
+                            'confidence' => round((float) $confianza, 3),
                         ],
                         suggestion: 'Incorpora el logotipo respetando las reglas de tamano y area de resguardo.',
                         origin: \App\Enums\FindingOrigin::Ai,
@@ -92,14 +124,11 @@ final class LogoEvaluator
                 continue;
             }
 
-            if (! is_array($caja)) {
+            if ($caja === null) {
                 continue;
             }
 
-            $x = (float) ($caja['x'] ?? 0);
-            $y = (float) ($caja['y'] ?? 0);
-            $ancho = (float) ($caja['width'] ?? 0);
-            $alto = (float) ($caja['height'] ?? 0);
+            ['x' => $x, 'y' => $y, 'width' => $ancho, 'height' => $alto] = $caja;
 
             // 2. Tamano minimo, como porcentaje del ancho de la pieza.
             if ($activo->min_width_percent !== null) {
@@ -203,6 +232,48 @@ final class LogoEvaluator
             }
         }
 
-        return $findings;
+        return ['findings' => $findings, 'undetermined' => $sinDeterminar];
+    }
+
+    /**
+     * Normaliza la caja o devuelve null si no se puede medir sobre ella.
+     *
+     * Antes los faltantes se convertian en cero ("el logo ocupa el 0.0% del
+     * ancho") y las coordenadas en pixeles daban margenes negativos. Las dos
+     * cosas producian hallazgos sobre datos que no existian.
+     *
+     * @return array{x: float, y: float, width: float, height: float}|null
+     */
+    private function cajaValida(mixed $caja): ?array
+    {
+        if (! is_array($caja)) {
+            return null;
+        }
+
+        $valores = [];
+
+        foreach (['x', 'y', 'width', 'height'] as $clave) {
+            if (! is_numeric($caja[$clave] ?? null)) {
+                return null;
+            }
+
+            $v = (float) $caja[$clave];
+
+            if ($v < 0.0 || $v > 1.0) {
+                return null;
+            }
+
+            $valores[$clave] = $v;
+        }
+
+        $tolerancia = 0.001;
+
+        if ($valores['width'] <= 0.0 || $valores['height'] <= 0.0
+            || $valores['x'] + $valores['width'] > 1.0 + $tolerancia
+            || $valores['y'] + $valores['height'] > 1.0 + $tolerancia) {
+            return null;
+        }
+
+        return $valores;
     }
 }

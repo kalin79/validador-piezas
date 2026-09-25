@@ -7,6 +7,7 @@ namespace App\Filament\Resources\PromptTemplates\Schemas;
 use App\Enums\RuleSetStatus;
 use App\Models\Brand;
 use App\Models\Client;
+use App\Support\Alcance;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -24,12 +25,15 @@ class PromptTemplateForm
                 ->schema([
                     Select::make('client_id')
                         ->label('Cliente')
-                        ->options(fn (): array => Client::query()
+                        ->options(fn (): array => Alcance::clientesVisibles(Client::query())
                             ->orderBy('name')
                             ->pluck('name', 'id')
                             ->all())
                         ->searchable()
                         ->placeholder('Todos los clientes')
+                        // Una instruccion general afecta a todos los clientes:
+                        // solo super_admin puede dejar el cliente vacio.
+                        ->required(fn (): bool => ! Alcance::esSuperAdmin(auth()->user()))
                         ->live()
                         ->disabledOn('edit')
                         // Al cambiar de cliente, la marca elegida deja de tener
@@ -44,7 +48,7 @@ class PromptTemplateForm
                                 return [];
                             }
 
-                            return Brand::query()
+                            return Alcance::marcas(Brand::query())
                                 ->where('client_id', $get('client_id'))
                                 ->orderBy('name')
                                 ->pluck('name', 'id')

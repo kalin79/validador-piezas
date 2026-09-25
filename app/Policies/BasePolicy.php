@@ -83,6 +83,26 @@ abstract class BasePolicy
     /**
      * @param  int|string|null  $brandId
      */
+    /**
+     * Acceso al cliente ENTERO, no solo a alguna de sus marcas.
+     *
+     * Lo exigen las decisiones que afectan a todas las marcas del cliente:
+     * reglas corporativas e instrucciones del modelo de nivel cliente. Con
+     * alcanzaCliente() bastaba ver una marca para gobernar todas las demas.
+     */
+    protected function alcanzaClienteCompleto(User $user, $clientId): bool
+    {
+        if ($this->esGlobal($user)) {
+            return true;
+        }
+
+        if ($clientId === null) {
+            return false;
+        }
+
+        return $user->fullAccessClientIds()->contains((int) $clientId);
+    }
+
     protected function alcanzaMarca(User $user, $brandId): bool
     {
         if ($this->esGlobal($user)) {

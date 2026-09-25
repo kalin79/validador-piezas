@@ -40,7 +40,7 @@ final class AssetIngestor
             );
         }
 
-        $disk ??= config('filesystems.default', 'local');
+        $disk ??= config('filesystems.piezas_disk', 'local');
 
         // El hash se calcula sobre el archivo temporal, antes de moverlo:
         // es la huella del binario que el usuario subio, no del que quedo guardado.
@@ -101,7 +101,7 @@ final class AssetIngestor
      */
     public function ingestStored(Submission $submission, string $path, ?string $disk = null): Asset
     {
-        $disk ??= config('filesystems.default', 'local');
+        $disk ??= config('filesystems.piezas_disk', 'local');
         $storage = Storage::disk($disk);
 
         if (! $storage->exists($path)) {

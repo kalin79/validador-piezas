@@ -72,7 +72,7 @@ class EditSubmission extends EditRecord
         }
 
         $ingestor = app(AssetIngestor::class);
-        $disco = config('filesystems.default', 'local');
+        $disco = config('filesystems.piezas_disk', 'local');
 
         $creados = 0;
         $repetidos = 0;

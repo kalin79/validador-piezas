@@ -37,7 +37,7 @@ class CreateSubmission extends CreateRecord
     protected function afterCreate(): void
     {
         $ingestor = app(AssetIngestor::class);
-        $disco = config('filesystems.default', 'local');
+        $disco = config('filesystems.piezas_disk', 'local');
 
         $creados = 0;
         $fallidos = [];

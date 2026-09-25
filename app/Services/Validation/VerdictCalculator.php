@@ -62,12 +62,16 @@ final class VerdictCalculator
      * @param  Collection<int, Finding>  $findings
      * @param  int|null  $rulesApplied  cuantas reglas se resolvieron para la pieza.
      *                                  Null conserva el comportamiento anterior.
+     * @param  array<string, array{outcome: string, reason: string|null}>|null  $pending
+     *                                  reglas aplicables que NO quedaron evaluadas.
+     *                                  Null = cobertura desconocida (compatibilidad).
      * @return array<string, mixed> atributos listos para crear el Verdict
      */
     public function calculate(
         Collection $findings,
         ?Brand $brand = null,
         ?int $rulesApplied = null,
+        ?array $pending = null,
     ): array {
         $personalizados = $this->pesosDeclarados($brand);
         $pesos = $this->weightsFor($personalizados);
@@ -107,13 +111,23 @@ final class VerdictCalculator
         // nadie midio. Aprobarla con 100 puntos es el peor error posible en un
         // sistema de auditoria, porque construye confianza sobre nada. Se
         // distingue explicitamente.
+        $pendientes = $pending ?? [];
+        $evaluadas = $rulesApplied === null ? null : max(0, $rulesApplied - count($pendientes));
+
         $estado = match (true) {
             $rulesApplied === 0 => VerdictStatus::NotEvaluated,
+            // Un incumplimiento real es real aunque otras reglas no se hayan
+            // podido verificar: el rechazo se sostiene con lo que si se midio.
             $bloqueantes > 0 => VerdictStatus::Rejected,
             // El bloqueante dice "esto no puede salir". El puntaje bajo dice
             // "esto esta mal hecho". Las dos cosas terminan en rechazo, pero
             // por motivos distintos, y el desglose permite separarlas despues.
             $puntaje < $umbralRechazo => VerdictStatus::Rejected,
+            // Nada se pudo verificar: no es una pieza que cumple.
+            $pendientes !== [] && $evaluadas === 0 => VerdictStatus::NotEvaluated,
+            // Falla cerrado. Si alguna regla quedo sin verificar, no se puede
+            // afirmar que la pieza cumple, ni siquiera "con observaciones".
+            $pendientes !== [] => VerdictStatus::RequiresReview,
             $puntaje < $umbral => VerdictStatus::ApprovedWithObservations,
             default => VerdictStatus::Approved,
         };
@@ -152,11 +166,12 @@ final class VerdictCalculator
                 'observation_threshold' => $umbral,
                 'rejection_threshold' => $umbralRechazo,
                 'rules_applied' => $rulesApplied,
-                // Sube a 3 porque cambio la regla del estado, no la del
-                // puntaje. Un veredicto viejo se sigue explicando con la
-                // version con la que se calculo.
-                'formula_version' => 3,
-                'rule' => 'puntaje de calidad = 100 - suma(peso por severidad); los bloqueantes no penalizan el puntaje pero fuerzan rechazo; bajo rejection_threshold se rechaza aunque no haya bloqueantes; bajo observation_threshold se aprueba con observaciones; cero reglas resueltas produce "sin evaluar"',
+                'rules_evaluated' => $evaluadas,
+                'pending_rules' => $pending,
+                // v4: cobertura por regla. Con reglas sin verificar el estado
+                // es "requiere revision" y nunca una aprobacion.
+                'formula_version' => 4,
+                'rule' => 'puntaje de calidad = 100 - suma(peso por severidad); los bloqueantes no penalizan el puntaje pero fuerzan rechazo; bajo rejection_threshold se rechaza aunque no haya bloqueantes; si alguna regla aplicable no se pudo verificar el estado es "requiere revision" (o "sin evaluar" si no se verifico ninguna); bajo observation_threshold se aprueba con observaciones; cero reglas resueltas produce "sin evaluar"',
             ],
         ];
     }

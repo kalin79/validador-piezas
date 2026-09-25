@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature;
+namespace Tests\Unit;
 
 use App\Enums\RuleCategory;
 use App\Enums\Severity;
@@ -28,7 +28,7 @@ use Tests\TestCase;
  * configurables. Lo que estos tests fijan es que sigan en orden y que ninguno
  * pueda desaparecer sin dejar rastro.
  *
- * Vive en Feature por la misma razon que el de pesos: el calculador escribe
+ * Extiende Tests\TestCase (aplicacion levantada) por la misma razon que el de pesos: el calculador escribe
  * avisos con la fachada Log, que necesita la aplicacion levantada. No toca la
  * base de datos.
  */
@@ -95,14 +95,15 @@ class VerdictCalculatorUmbralesTest extends TestCase
 
     public function test_el_corte_de_rechazo_es_estricto(): void
     {
-        // Tres mayores y dos menores son exactamente 55: por encima de 50, no
-        // se rechaza. Se fija el borde para que un cambio de redondeo no lo
-        // mueva sin que nadie se entere.
+        // Tres mayores y un menor son exactamente 50: el corte es "menor que",
+        // asi que 50 no se rechaza. Se fija el borde para que un cambio de
+        // redondeo no lo mueva sin que nadie se entere.
         $this->assertSame(
             VerdictStatus::ApprovedWithObservations,
-            $this->estado(['major' => 3])
+            $this->estado(['major' => 3, 'minor' => 1])
         );
 
+        // Tres mayores y dos menores son 45: bajo el corte, se rechaza.
         $this->assertSame(
             VerdictStatus::Rejected,
             $this->estado(['major' => 3, 'minor' => 2])
@@ -243,6 +244,6 @@ class VerdictCalculatorUmbralesTest extends TestCase
         // y uno nuevo se explicarian con la misma formula siendo distintos.
         $resultado = (new VerdictCalculator())->calculate($this->hallazgos([]), null, 5);
 
-        $this->assertSame(3, $resultado['scoring_formula_snapshot']['formula_version']);
+        $this->assertSame(4, $resultado['scoring_formula_snapshot']['formula_version']);
     }
 }

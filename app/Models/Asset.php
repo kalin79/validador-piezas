@@ -65,4 +65,12 @@ class Asset extends Model
             ->where('id', '!=', $this->id)
             ->where('brand_id', $this->brand_id);
     }
+
+    /**
+     * URL autenticada de la pieza. Nunca una URL publica de /storage.
+     */
+    public function url(): ?string
+    {
+        return $this->exists && filled($this->public_id) ? route('archivos.pieza', $this) : null;
+    }
 }

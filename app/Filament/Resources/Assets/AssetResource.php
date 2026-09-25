@@ -57,8 +57,19 @@ class AssetResource extends Resource
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()
-            ->whereIn('brand_id', auth()->user()->accessibleBrandIds());
+        $user = auth()->user();
+
+        $query = parent::getEloquentQuery()
+            ->whereIn('brand_id', $user->accessibleBrandIds());
+
+        // Quien solo tiene submission.view_own ve sus piezas, no las de sus
+        // companeros de marca. Antes la policy lo exigia en la ficha, pero el
+        // listado mostraba todo.
+        if (! $user->hasPermissionTo('submission.view_any') && ! $user->hasPermissionTo('submission.view_brand')) {
+            $query->whereHas('submission', fn (Builder $q): Builder => $q->where('user_id', $user->id));
+        }
+
+        return $query;
     }
 
     public static function canCreate(): bool

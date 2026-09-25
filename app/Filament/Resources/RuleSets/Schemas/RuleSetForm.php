@@ -8,6 +8,7 @@ use App\Enums\RuleSetOwnerType;
 use App\Enums\RuleSetStatus;
 use App\Models\Brand;
 use App\Models\Client;
+use App\Support\Alcance;
 use App\Models\RuleSet;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -40,7 +41,12 @@ class RuleSetForm
 
                     Select::make('client_id')
                         ->label('Cliente')
-                        ->options(fn (): array => Client::query()->orderBy('name')->pluck('name', 'id')->all())
+                        // Nivel cliente exige acceso completo al cliente; nivel
+                        // marca basta con ver alguna de sus marcas.
+                        ->options(fn (callable $get): array => ($get('owner_type') === RuleSetOwnerType::Client->value
+                            ? Alcance::clientesCompletos(Client::query())
+                            : Alcance::clientesVisibles(Client::query()))
+                            ->orderBy('name')->pluck('name', 'id')->all())
                         ->searchable()
                         ->required()
                         ->live()
@@ -54,7 +60,7 @@ class RuleSetForm
                                 return [];
                             }
 
-                            return Brand::query()
+                            return Alcance::marcas(Brand::query())
                                 ->where('client_id', $get('client_id'))
                                 ->orderBy('name')
                                 ->pluck('name', 'id')

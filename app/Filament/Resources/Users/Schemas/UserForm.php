@@ -6,7 +6,9 @@ namespace App\Filament\Resources\Users\Schemas;
 
 use App\Models\Brand;
 use App\Models\User;
+use App\Support\Alcance;
 use Closure;
+use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -105,7 +107,11 @@ class UserForm
 
                     Select::make('teams')
                         ->label('Equipos')
-                        ->relationship('teams', 'name')
+                        // Solo equipos propios: asignar un equipo concede su
+                        // acceso. Acotar la consulta tambien valida en el
+                        // servidor (Filament rechaza ids fuera de las opciones).
+                        ->relationship('teams', 'name', modifyQueryUsing: fn (Builder $query): Builder => Alcance::equipos($query))
+                        ->rules([Alcance::reglaSoloNuevosPermitidos('teams', fn () => auth()->user()->teamIds())])
                         ->multiple()
                         ->preload()
                         // Los equipos son el mecanismo de aislamiento entre

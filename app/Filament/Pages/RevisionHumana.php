@@ -147,7 +147,11 @@ class RevisionHumana extends Page
             $this->decisiones[$f->id] = FindingReviewState::Confirmed->value;
         }
 
-        $this->veredictoFinal = $run->verdict?->status->value;
+        // Si la maquina no llego a una conclusion, la persona tiene que elegir
+        // una: no se precarga "requiere revision" como si fuera una decision.
+        $this->veredictoFinal = $run->verdict?->status->esConcluyente()
+            ? $run->verdict->status->value
+            : null;
     }
 
     public function alternar(int $findingId): void
@@ -190,11 +194,23 @@ class RevisionHumana extends Page
             return;
         }
 
+        $final = VerdictStatus::tryFrom($this->veredictoFinal ?? '');
+
+        if ($final === null || ! $final->esConcluyente()) {
+            Notification::make()
+                ->title('Elige un veredicto final')
+                ->body('La revision humana tiene que concluir: aprobado, aprobado con observaciones o rechazado.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
         try {
             app(ReviewRecorder::class)->record(
                 run: $run,
                 reviewerId: auth()->id(),
-                veredictoFinal: VerdictStatus::from($this->veredictoFinal ?? ''),
+                veredictoFinal: $final,
                 decisiones: $this->decisiones,
                 agregados: $this->agregados,
                 justificacion: filled($this->justificacion) ? $this->justificacion : null,

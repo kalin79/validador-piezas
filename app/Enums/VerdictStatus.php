@@ -10,6 +10,9 @@ enum VerdictStatus: string
     case ApprovedWithObservations = 'approved_with_observations';
     case Rejected = 'rejected';
     case NotEvaluated = 'not_evaluated';
+    // Hay reglas aplicables que no se pudieron verificar y ningun motivo
+    // de rechazo. No se puede afirmar que la pieza cumple: decide una persona.
+    case RequiresReview = 'requires_review';
 
     public function label(): string
     {
@@ -18,6 +21,7 @@ enum VerdictStatus: string
             self::ApprovedWithObservations => 'Aprobado con observaciones',
             self::Rejected => 'Rechazado',
             self::NotEvaluated => 'Sin evaluar',
+            self::RequiresReview => 'Requiere revision',
         };
     }
 
@@ -28,6 +32,7 @@ enum VerdictStatus: string
             self::ApprovedWithObservations => 'warning',
             self::Rejected => 'danger',
             self::NotEvaluated => 'gray',
+            self::RequiresReview => 'info',
         };
     }
 
@@ -40,6 +45,14 @@ enum VerdictStatus: string
      */
     public function esConcluyente(): bool
     {
-        return $this !== self::NotEvaluated;
+        return $this !== self::NotEvaluated && $this !== self::RequiresReview;
+    }
+
+    /**
+     * Solo una aprobacion habilita el envio al director.
+     */
+    public function habilitaEnvio(): bool
+    {
+        return $this === self::Approved || $this === self::ApprovedWithObservations;
     }
 }

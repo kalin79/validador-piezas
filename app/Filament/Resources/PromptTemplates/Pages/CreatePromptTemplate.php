@@ -55,6 +55,10 @@ class CreatePromptTemplate extends CreateRecord
         // retira la version anterior del mismo alcance.
         $data['status'] = RuleSetStatus::Draft->value;
 
+        // El alcance elegido tiene que estar al alcance de quien crea. Ver
+        // PromptTemplatePolicy::update.
+        abort_unless(auth()->user()?->can('update', new PromptTemplate($data)) === true, 403);
+
         return $data;
     }
 }

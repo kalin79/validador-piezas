@@ -42,11 +42,8 @@ class BrandAsset extends Model
 
     public function url(): ?string
     {
-        try {
-            return Storage::disk($this->storage_disk)->url($this->storage_path);
-        } catch (\Throwable) {
-            return null;
-        }
+        // Ruta autenticada: aplica BrandAssetPolicy::view antes de servir.
+        return $this->exists ? route('archivos.activo-marca', $this) : null;
     }
 
     public function appliesToChannel(?string $channel): bool

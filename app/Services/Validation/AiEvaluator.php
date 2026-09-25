@@ -43,7 +43,9 @@ final class AiEvaluator
      *     response: VisionResponse,
      *     template: PromptTemplate,
      *     discarded: array<int, string>,
-     *     extracted_text: string|null
+     *     coverage: array<string, array{outcome: \App\Enums\RuleOutcome, reason: string|null}>,
+     *     extracted_text: string|null,
+     *     user_prompt: string
      * }
      */
     public function evaluate(
@@ -60,12 +62,20 @@ final class AiEvaluator
 
         $template = $prompts['template'];
 
+        // Sin esquema publicado no hay contrato que validar. Antes se caia en
+        // ['type' => 'object'], que acepta cualquier cosa.
+        if (! is_array($template->output_schema) || $template->output_schema === []) {
+            throw AiException::invalidSchema('la plantilla publicada no tiene output_schema');
+        }
+
+        $codigosJuicio = $resolved->judgmentRules()->pluck('code')->values()->all();
+
         $respuesta = $this->provider->analyze(new VisionRequest(
             systemPrompt: $prompts['system'],
-            userPrompt: $prompts['user'],
+            userPrompt: $prompts['user']."\n\n".self::instruccionDeCobertura($codigosJuicio),
             imageBase64: $imagen['data'],
             imageMediaType: $imagen['media_type'],
-            outputSchema: $template->output_schema ?? ['type' => 'object'],
+            outputSchema: self::conCobertura($template->output_schema, $codigosJuicio),
             imageWidth: $imagen['width'],
             imageHeight: $imagen['height'],
             model: $model,
@@ -90,17 +100,100 @@ final class AiEvaluator
         $reglaActivos = $resolved->rules
             ->first(fn (Rule $r): bool => $r->category === RuleCategory::RequiredAssets);
 
-        $hallazgosLogo = is_array($respuesta->data['logo'] ?? null)
-            ? $this->logoEvaluator->evaluate($asset, $respuesta->data['logo'], $channel, $reglaActivos)
-            : [];
+        $logo = is_array($respuesta->data['logo'] ?? null)
+            ? $this->logoEvaluator->evaluateWithCoverage($asset, $respuesta->data['logo'], $channel, $reglaActivos)
+            : ['findings' => [], 'undetermined' => null];
+
+        $cobertura = $mapeado['coverage'];
+
+        // Si la medicion del logo no fue concluyente, la regla que la ampara
+        // no puede quedar como cumplida aunque el modelo lo haya dicho.
+        if ($reglaActivos !== null && $logo['undetermined'] !== null && $logo['findings'] === []) {
+            $cobertura[$reglaActivos->code] = [
+                'outcome' => \App\Enums\RuleOutcome::NotDeterminable,
+                'reason' => $logo['undetermined'],
+            ];
+        }
 
         return [
-            'findings' => array_merge($mapeado['findings'], $hallazgosLogo),
+            'findings' => array_merge($mapeado['findings'], $logo['findings']),
             'response' => $respuesta,
             'template' => $template,
             'discarded' => $mapeado['discarded'],
+            'coverage' => $cobertura,
             'extracted_text' => $respuesta->data['extracted_text'] ?? null,
+            'user_prompt' => $prompts['user'],
         ];
+    }
+
+    /**
+     * Agrega al esquema de la plantilla el pronunciamiento obligatorio por
+     * regla.
+     *
+     * Vive en codigo y no en la plantilla a proposito: es el contrato del que
+     * depende el calculo del veredicto. Si una plantilla nueva lo omitiera, el
+     * sistema volveria a leer "lista vacia" como "cumple todo".
+     *
+     * @param  array<string, mixed>  $schema
+     * @param  array<int, string>  $codigos
+     * @return array<string, mixed>
+     */
+    public static function conCobertura(array $schema, array $codigos): array
+    {
+        $schema['type'] ??= 'object';
+        $schema['properties'] = (array) ($schema['properties'] ?? []);
+
+        $item = [
+            'type' => 'object',
+            'properties' => [
+                'rule_code' => ['type' => 'string', 'description' => 'Codigo exacto de la regla de juicio.'],
+                'status' => [
+                    'type' => 'string',
+                    'enum' => ['cumple', 'incumple', 'no_determinable'],
+                    'description' => 'cumple solo si hay base visible en la pieza. Ante cualquier duda, no_determinable.',
+                ],
+                'evidence' => ['type' => 'string', 'description' => 'Lo que se ve en la pieza que sostiene el estado, o por que no se puede determinar.'],
+                'confidence' => ['type' => 'number', 'minimum' => 0, 'maximum' => 1],
+            ],
+            'required' => ['rule_code', 'status', 'evidence', 'confidence'],
+        ];
+
+        if ($codigos !== []) {
+            $item['properties']['rule_code']['enum'] = array_values($codigos);
+        }
+
+        $schema['properties']['rule_assessments'] = [
+            'type' => 'array',
+            'description' => 'Exactamente un elemento por cada regla de juicio listada, cumpla o no.',
+            'items' => $item,
+        ];
+
+        // La confianza de cada hallazgo tambien se acota en el esquema.
+        if (isset($schema['properties']['findings']['items']['properties']['confidence'])) {
+            $schema['properties']['findings']['items']['properties']['confidence']['minimum'] = 0;
+            $schema['properties']['findings']['items']['properties']['confidence']['maximum'] = 1;
+        }
+
+        $schema['required'] = array_values(array_unique(array_merge(
+            (array) ($schema['required'] ?? []),
+            ['findings', 'rule_assessments'],
+        )));
+
+        return $schema;
+    }
+
+    /**
+     * @param  array<int, string>  $codigos
+     */
+    public static function instruccionDeCobertura(array $codigos): string
+    {
+        return "INSTRUCCION DE COBERTURA (obligatoria)\n"
+            .'Ademas de los hallazgos, completa rule_assessments con un elemento por cada una de estas reglas: '
+            .implode(', ', $codigos).".\n"
+            ."- status=cumple solo si puedes ver en la pieza lo que lo demuestra; cita esa evidencia.\n"
+            ."- status=incumple exige registrar tambien el hallazgo en findings.\n"
+            ."- status=no_determinable si el texto no se lee, falta informacion o no estas seguro. No adivines: es preferible no_determinable a una afirmacion sin base.\n"
+            .'- confidence entre 0 y 1.';
     }
 
     /**
@@ -120,6 +213,12 @@ final class AiEvaluator
 
         if (! is_array($data['findings'])) {
             throw AiException::invalidSchema("'findings' debe ser un arreglo");
+        }
+
+        // rule_assessments puede faltar (la cobertura lo trata como "no se
+        // pronuncio"), pero si viene tiene que ser una lista.
+        if (array_key_exists('rule_assessments', $data) && ! is_array($data['rule_assessments'])) {
+            throw AiException::invalidSchema("'rule_assessments' debe ser un arreglo");
         }
 
         // 'extracted_text' y 'logo' son opcionales a proposito.

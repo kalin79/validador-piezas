@@ -21,7 +21,11 @@ class BrandAssetObserver
             return;
         }
 
-        $disk = $asset->storage_disk ?: 'public';
+        // El formulario guarda en el disco privado de piezas. Solo se respeta
+        // otro disco si quien crea el registro lo fijo a proposito.
+        $disk = $asset->isDirty('storage_disk') && filled($asset->storage_disk)
+            ? $asset->storage_disk
+            : (string) config('filesystems.piezas_disk', 'local');
         $storage = Storage::disk($disk);
 
         if (! $storage->exists($asset->storage_path)) {

@@ -54,7 +54,7 @@ class SubmissionsTable
             ->filters([
                 SelectFilter::make('brand_id')
                     ->label('Marca')
-                    ->relationship('brand', 'name')
+                    ->relationship('brand', 'name', fn (\Illuminate\Database\Eloquent\Builder $query) => \App\Support\Alcance::marcasVisibles($query))
                     ->searchable()
                     ->preload(),
 
@@ -76,6 +76,9 @@ class SubmissionsTable
                     ->color('gray')
                     ->requiresConfirmation()
                     ->modalDescription('Se creara una ejecucion nueva por cada pieza, con las reglas publicadas vigentes. Las validaciones anteriores se conservan.')
+                    // Cada validacion cuesta dinero: exige validation.trigger
+                    // y alcance (SubmissionPolicy::validar).
+                    ->authorize('validar')
                     ->action(function (Submission $record): void {
                         $n = 0;
 

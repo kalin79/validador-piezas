@@ -16,6 +16,15 @@ return [
     'default' => env('FILESYSTEM_DISK', 'local'),
 
     /*
+    | Disco de las piezas y activos de marca.
+    |
+    | Privado por diseno: las piezas son campanas sin publicar. Se sirven solo
+    | a traves de rutas autenticadas que aplican la politica del registro
+    | (ver ArchivoController). Nunca debe apuntar a 'public'.
+    */
+    'piezas_disk' => env('PIEZAS_DISK', 'local'),
+
+    /*
     |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------

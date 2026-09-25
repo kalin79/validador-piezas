@@ -48,6 +48,8 @@ class ValidacionRapida extends Page
 
     public ?string $modelo = null;
 
+    public ?string $canal = null;
+
     public ?string $runId = null;
 
     public bool $procesando = false;
@@ -88,13 +90,36 @@ class ValidacionRapida extends Page
         return (array) config('ai.available_models', []);
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public function getCanalesProperty(): array
+    {
+        return collect((array) config('channels.presets', []))
+            ->map(fn (array $p): string => (string) ($p['label'] ?? ''))
+            ->all();
+    }
+
+    /**
+     * Elegir modelo es elegir con que rigor se juzga: solo super_admin puede
+     * cambiarlo. Para el resto el selector no aparece y se usa el configurado.
+     */
+    public function getPuedeElegirModeloProperty(): bool
+    {
+        return auth()->user()?->hasRole('super_admin') === true;
+    }
+
     public function getRunProperty(): ?ValidationRun
     {
         if ($this->runId === null) {
             return null;
         }
 
+        // runId es una propiedad publica de Livewire: se puede alterar desde
+        // el navegador. Se acota a las marcas del usuario para que no sirva
+        // para leer ejecuciones de otro cliente.
         return ValidationRun::query()
+            ->whereIn('brand_id', auth()->user()->accessibleBrandIds())
             ->where('public_id', $this->runId)
             ->with(['verdict', 'findings', 'asset'])
             ->first();
@@ -105,6 +130,10 @@ class ValidacionRapida extends Page
         $this->validate([
             'marca' => ['required', 'string'],
             'imagen' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:20480'],
+            'canal' => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys($this->canales))],
+            // El modelo se valida contra el catalogo: la propiedad es publica
+            // y se puede alterar desde el navegador.
+            'modelo' => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys($this->modelos))],
         ], [
             'marca.required' => 'Elige una marca.',
             'imagen.required' => 'Sube una imagen.',
@@ -131,9 +160,9 @@ class ValidacionRapida extends Page
                 file: $archivo,
                 userId: auth()->id(),
                 source: 'panel_rapido',
-                channel: null,
+                channel: $this->canal ?: null,
                 externalRef: null,
-                model: $this->modelo ?: null,
+                model: $this->puedeElegirModelo ? ($this->modelo ?: null) : null,
             );
 
             $this->runId = $run->public_id;

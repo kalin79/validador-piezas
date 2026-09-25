@@ -12,7 +12,9 @@ class ExampleTest extends TestCase
      */
     public function test_the_application_returns_a_successful_response(): void
     {
-        $response = $this->get('/');
+        // La raiz redirige al panel; lo que se verifica aqui es que la
+        // aplicacion arranca, con la ruta de salud de Laravel.
+        $response = $this->get('/up');
 
         $response->assertStatus(200);
     }

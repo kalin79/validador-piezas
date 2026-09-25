@@ -50,7 +50,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Treinta dias por omision. Un token sin vencimiento en un plugin
+    // instalado en la maquina de un externo es un acceso permanente.
+    'expiration' => (int) env('SANCTUM_EXPIRATION', 60 * 24 * 30) ?: null,
 
     /*
     |--------------------------------------------------------------------------
@@ -65,7 +67,8 @@ return [
     |
     */
 
-    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
+    // El prefijo permite que los escaneres de secretos detecten un token filtrado.
+    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', 'vp_'),
 
     /*
     |--------------------------------------------------------------------------

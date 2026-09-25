@@ -93,7 +93,7 @@ class RuleSetPolicy extends BasePolicy
     private function alcanzaConjunto(User $user, RuleSet $ruleSet): bool
     {
         return $ruleSet->owner_type === RuleSetOwnerType::Client
-            ? $this->alcanzaCliente($user, $ruleSet->owner_id)
+            ? $this->alcanzaClienteCompleto($user, $ruleSet->owner_id)
             : $this->alcanzaMarca($user, $ruleSet->owner_id);
     }
 }

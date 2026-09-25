@@ -45,7 +45,8 @@ class AssetsRelationManager extends RelationManager
             ->columns([
                 ImageColumn::make('storage_path')
                     ->label('Pieza')
-                    ->disk(fn (Asset $record): string => $record->storage_disk)
+                    // URL autenticada: el disco de piezas es privado.
+                    ->getStateUsing(fn (Asset $record): ?string => $record->url())
                     ->height(56)
                     ->square(),
 
@@ -179,6 +180,7 @@ class AssetsRelationManager extends RelationManager
                     ->color('gray')
                     ->requiresConfirmation()
                     ->modalDescription('Se creara una ejecucion nueva con las reglas publicadas vigentes y el modelo configurado. Las anteriores se conservan.')
+                    ->authorize('validar')
                     ->action(function (Asset $record): void {
                         RunValidation::dispatch($record, auth()->id());
 
@@ -219,6 +221,7 @@ class AssetsRelationManager extends RelationManager
                                 self::nombreModelo($record->latestRun?->model_identifier) ?? 'otro modelo',
                             ))
                             ->modalSubmitActionLabel('Validar con '.strtok($etiqueta, ' '))
+                            ->authorize('validar')
                             ->action(function (Asset $record) use ($id, $etiqueta): void {
                                 RunValidation::dispatch($record, auth()->id(), $id);
 
@@ -235,7 +238,9 @@ class AssetsRelationManager extends RelationManager
                     ->icon('heroicon-o-beaker')
                     ->color('gray')
                     ->button()
-                    ->visible(fn (): bool => (bool) (auth()->user()?->hasGlobalAccess() ?? false)),
+                    // Solo super_admin: el auditor tiene alcance global de
+                    // lectura, pero no gasta ni valida.
+                    ->visible(fn (): bool => (bool) (auth()->user()?->hasRole('super_admin') ?? false)),
             ])
             ->emptyStateHeading('Sin piezas')
             ->emptyStateDescription('Las piezas se agregan al crear la carga.');
@@ -353,11 +358,7 @@ class AssetsRelationManager extends RelationManager
 
     public static function previewUrl(Asset $asset): ?string
     {
-        try {
-            return Storage::disk($asset->storage_disk)->url($asset->storage_path);
-        } catch (\Throwable) {
-            return null;
-        }
+        return $asset->url();
     }
 
     private static function humanBytes(int $bytes): string

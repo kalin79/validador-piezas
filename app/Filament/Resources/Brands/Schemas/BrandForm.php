@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Filament\Resources\Brands\Schemas;
 
 use App\Models\Client;
+use App\Support\Alcance;
+use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -24,10 +26,13 @@ class BrandForm
                 ->schema([
                     Select::make('client_id')
                         ->label('Cliente')
-                        ->relationship('client', 'name')
+                        ->relationship('client', 'name', modifyQueryUsing: fn (Builder $query): Builder => Alcance::clientesCompletos($query))
                         ->searchable()
                         ->preload()
                         ->required()
+                        // Mudar una marca a otro cliente cambia quien la ve y
+                        // que reglas hereda. Solo super_admin puede hacerlo.
+                        ->disabled(fn (string $operation): bool => $operation === 'edit' && ! Alcance::esSuperAdmin(auth()->user()))
                         ->helperText('La marca hereda las reglas corporativas de este cliente.'),
 
                     TextInput::make('name')

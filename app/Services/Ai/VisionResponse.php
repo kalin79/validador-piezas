@@ -18,6 +18,9 @@ final readonly class VisionResponse
         public int $outputTokens,
         public float $costUsd,
         public bool $simulated = false,
+        // Motivo de corte que informo el proveedor (tool_use, max_tokens...).
+        // Se guarda para poder demostrar que la salida no vino truncada.
+        public ?string $stopReason = null,
     ) {}
 
     public function totalTokens(): int

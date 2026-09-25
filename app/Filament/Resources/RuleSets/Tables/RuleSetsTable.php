@@ -72,7 +72,7 @@ class RuleSetsTable
 
                 SelectFilter::make('client_id')
                     ->label('Cliente')
-                    ->relationship('client', 'name')
+                    ->relationship('client', 'name', fn (\Illuminate\Database\Eloquent\Builder $query) => \App\Support\Alcance::clientesVisibles($query))
                     ->searchable()
                     ->preload(),
 
@@ -95,6 +95,10 @@ class RuleSetsTable
                     ->modalHeading('Publicar este conjunto de reglas')
                     ->modalDescription('Al publicar, la version vigente anterior pasa a Retirado y esta queda como unica activa. No podras editar sus reglas: para cambiarlas tendras que crear una version nueva. Las validaciones que ya usaron versiones anteriores las seguiran referenciando para siempre.')
                     ->visible(fn (RuleSet $record): bool => $record->status === RuleSetStatus::Draft)
+                    // Se verifica en el servidor al ejecutar, no solo al pintar
+                    // el boton: RuleSetPolicy::publish exige knowledge.publish
+                    // (o publish_client en nivel cliente) y alcance.
+                    ->authorize('publish')
                     ->action(function (RuleSet $record): void {
                         if ($record->rules()->count() === 0) {
                             Notification::make()
@@ -146,6 +150,8 @@ class RuleSetsTable
                     ->modalHeading('Crear una version nueva')
                     ->modalDescription('Se generara una copia en borrador con todas las reglas de esta version, para editarla sin tocar la publicada.')
                     ->visible(fn (RuleSet $record): bool => $record->status === RuleSetStatus::Published)
+                    ->authorize(fn (RuleSet $record): bool => (bool) auth()->user()?->can('create', RuleSet::class)
+                        && (bool) auth()->user()?->can('view', $record))
                     ->action(function (RuleSet $record): void {
                         $copia = DB::transaction(function () use ($record): RuleSet {
                             $version = $record->nextVersionNumber();

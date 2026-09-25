@@ -64,9 +64,13 @@ class PromptTemplatePolicy extends BasePolicy
             return false;
         }
 
-        return $template->client_id === null
-            ? $this->esAdminGlobal($user)
-            : $this->puede($user, 'knowledge.publish');
+        return match (true) {
+            $template->client_id === null => $this->esAdminGlobal($user),
+            // Nivel cliente: rige para todas sus marcas. Mismo permiso que las
+            // reglas corporativas.
+            $template->brand_id === null => $this->puede($user, 'knowledge.publish_client'),
+            default => $this->puede($user, 'knowledge.publish'),
+        };
     }
 
     private function alcanzaPlantilla(User $user, PromptTemplate $template): bool
@@ -85,6 +89,6 @@ class PromptTemplatePolicy extends BasePolicy
             return $this->alcanzaMarca($user, $template->brand_id);
         }
 
-        return $this->alcanzaCliente($user, $template->client_id);
+        return $this->alcanzaClienteCompleto($user, $template->client_id);
     }
 }

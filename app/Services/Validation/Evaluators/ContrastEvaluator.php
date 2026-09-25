@@ -30,8 +30,45 @@ use Illuminate\Support\Collection;
  * esta regla no se podia calibrar: se veian sus hallazgos pero no su tasa de
  * acierto.
  */
-final class ContrastEvaluator implements Evaluator
+final class ContrastEvaluator implements Evaluator, ReportsUndetermined
 {
+    public function undetermined(Asset $asset, Collection $rules, ?string $channel): array
+    {
+        $motivo = match (true) {
+            count($asset->extracted_palette ?? []) < 2 => 'No hay al menos dos colores extraidos de la pieza: no se pudo medir el contraste.',
+            $this->umbral($asset) === null => 'El umbral contrast_threshold configurado no es un numero valido: no se midio el contraste.',
+            default => null,
+        };
+
+        if ($motivo === null) {
+            return [];
+        }
+
+        return $rules->mapWithKeys(fn (Rule $r): array => [$r->code => $motivo])->all();
+    }
+
+    /**
+     * Umbral efectivo, o null si el configurado no se puede interpretar.
+     *
+     * Antes se hacia (float) sobre el valor crudo: una cadena vacia o "abc"
+     * daban 0.0, y con umbral cero el evaluador nunca disparaba. La regla
+     * quedaba reportada como cumplida sin haberse medido.
+     */
+    private function umbral(Asset $asset): ?float
+    {
+        $valor = $asset->brand?->setting('contrast_threshold');
+
+        if ($valor === null || $valor === '') {
+            return $this->defaultThreshold;
+        }
+
+        if (! is_numeric($valor) || (float) $valor <= 0.0 || (float) $valor > 21.0) {
+            return null;
+        }
+
+        return (float) $valor;
+    }
+
     public function __construct(
         private float $defaultThreshold = 4.5,
     ) {}
@@ -53,7 +90,11 @@ final class ContrastEvaluator implements Evaluator
             return [];
         }
 
-        $umbral = (float) ($asset->brand?->setting('contrast_threshold') ?? $this->defaultThreshold);
+        $umbral = $this->umbral($asset);
+
+        if ($umbral === null) {
+            return [];
+        }
 
         $fondo = Rgb::fromHex((string) $paleta[0]['hex']);
         $figura = Rgb::fromHex((string) $paleta[1]['hex']);

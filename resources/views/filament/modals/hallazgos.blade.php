@@ -27,18 +27,6 @@
     $iaSimulada = ($meta['ai_simulated'] ?? false) === true;
     $iaError = $meta['ai_error'] ?? null;
 
-    $porRegla = $findings->groupBy('rule_id');
-    $porCodigo = $findings->groupBy('rule_code');
-
-    $origenes = [
-        'client' => 'corporativa',
-        'brand' => 'de marca',
-        'brand_override' => 'de marca, anula la corporativa',
-    ];
-
-    $evaluadas = [];
-    $resumen = ['incumple' => 0, 'cumple' => 0, 'pendiente' => 0];
-
     $etiquetasSeveridad = [
         'blocking' => 'bloqueante',
         'major' => 'mayor',
@@ -46,64 +34,28 @@
         'info' => 'informativo',
     ];
 
-    foreach (($run?->resolved_rules_snapshot ?? []) as $r) {
-        $deLaRegla = collect($porRegla[$r['rule_id'] ?? null] ?? []);
+    $origenes = [
+        'client' => 'corporativa',
+        'brand' => 'de marca',
+        'brand_override' => 'de marca, anula la corporativa',
+    ];
 
-        if ($deLaRegla->isEmpty()) {
-            $deLaRegla = collect($porCodigo[$r['code'] ?? null] ?? []);
-        }
+    // Una sola fuente de verdad para el estado de cada regla. "Cumple" solo
+    // aparece si la cobertura registrada dice que la regla se evaluo.
+    $reporteReglas = \App\Services\Validation\RuleStatusReport::for($run);
+    $resumen = $reporteReglas['resumen'];
+    $evaluadas = [];
 
-        $n = $deLaRegla->count();
-
-        $esDeterminista = ($r['type'] ?? '') === 'deterministic';
-        $severidadHallada = null;
-
-        if ($n > 0) {
-            $estado = 'incumple';
-
-            /*
-             * "1 hallazgo" no dice si la pieza se rechaza o si es un detalle
-             * menor, y esa es justo la pregunta que se hace quien mira esta
-             * tabla. Se muestra la severidad real del hallazgo, que ademas
-             * puede diferir de la severidad configurada en la regla: el
-             * evaluador de paleta, por ejemplo, la calcula segun cuanta
-             * superficie esta fuera.
-             */
-            $peor = $deLaRegla
-                ->sortBy(fn ($f) => $orden[$f->severity->value] ?? 9)
-                ->first();
-
-            $severidadHallada = $peor?->severity->value;
-            $nombreSeveridad = $etiquetasSeveridad[$severidadHallada] ?? $severidadHallada;
-
-            $detalle = $n === 1
-                ? '1 hallazgo '.$nombreSeveridad
-                : $n.' hallazgos, el mas grave '.$nombreSeveridad;
-        } elseif ($esDeterminista) {
-            $estado = 'cumple';
-            $detalle = 'medida por codigo, sin desviacion';
-        } elseif ($iaSimulada) {
-            $estado = 'pendiente';
-            $detalle = 'juicio simulado, no real';
-        } elseif ($iaCorrio) {
-            $estado = 'cumple';
-            $detalle = 'juzgada por el modelo, sin observacion';
-        } else {
-            $estado = 'pendiente';
-            $detalle = $iaError ? 'la llamada al modelo fallo' : 'el motor de juicio no se ejecuto';
-        }
-
-        $resumen[$estado]++;
-
+    foreach ($reporteReglas['rules'] as $r) {
         $evaluadas[] = [
-            'code' => $r['code'] ?? '?',
-            'title' => $r['title'] ?? '',
-            'motor' => $esDeterminista ? 'codigo' : 'IA',
-            'origen' => $origenes[$r['origin'] ?? ''] ?? ($r['origin'] ?? ''),
-            'severidad' => $r['severity'] ?? '',
-            'estado' => $estado,
-            'detalle' => $detalle,
-            'severidad_hallada' => $severidadHallada,
+            'code' => $r['code'],
+            'title' => $r['title'],
+            'motor' => $r['type'] === 'deterministic' ? 'codigo' : 'IA',
+            'origen' => $origenes[$r['origin']] ?? $r['origin'],
+            'severidad' => $r['severity'],
+            'estado' => $r['estado'],
+            'detalle' => $r['detalle'],
+            'severidad_hallada' => $r['severidad_hallada'],
         ];
     }
 
@@ -355,7 +307,7 @@
                 <div class="hz-empty">
                     <p><strong>Ningun hallazgo.</strong></p>
                     <p style="opacity:.6; font-size:.875rem; margin-top:.25rem">
-                        La pieza cumple todas las reglas deterministas evaluadas.
+                        No se registraron incumplimientos. Revisa abajo que reglas se verificaron y cuales quedaron pendientes.
                     </p>
                 </div>
             @endforelse
@@ -372,8 +324,8 @@
 
                 @if ($resumen['pendiente'] > 0)
                     <div class="hz-alerta">
-                        Este veredicto <strong>no cubre {{ $resumen['pendiente'] }} regla(s)</strong>.
-                        Una pieza puede salir aprobada y aun asi incumplir alguna de ellas.
+                        <strong>{{ $resumen['pendiente'] }} regla(s) no se pudieron verificar.</strong>
+                        Mientras existan, el veredicto no puede ser una aprobacion.
                     </div>
                 @endif
 

@@ -85,6 +85,9 @@ class SubmissionForm
                         ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
                         ->maxSize(20 * 1024)
                         ->maxFiles(20)
+                        // Disco privado: las piezas no se sirven por /storage.
+                        ->disk(fn (): string => (string) config('filesystems.piezas_disk', 'local'))
+                        ->visibility('private')
                         ->directory(fn (): string => 'piezas/'.now()->format('Y/m'))
                         // El nombre de almacenamiento lleva los primeros 8 caracteres
                         // del SHA-256 del contenido. Es deterministico: los mismos
@@ -99,7 +102,15 @@ class SubmissionForm
                         // corresponder al veredicto, en silencio.
                         ->getUploadedFileNameForStorageUsing(function ($file): string {
                             $nombre = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME));
-                            $extension = strtolower($file->getClientOriginalExtension() ?: 'bin');
+                            // La extension sale del contenido real, no del nombre
+                            // que manda el navegador: un PNG renombrado a .html
+                            // pasaba la validacion MIME y se guardaba como .html.
+                            $extension = match ($file->getMimeType()) {
+                                'image/jpeg' => 'jpg',
+                                'image/png' => 'png',
+                                'image/webp' => 'webp',
+                                default => throw new \RuntimeException('Tipo de archivo no permitido.'),
+                            };
                             $huella = substr((string) hash_file('sha256', $file->getRealPath()), 0, 8);
 
                             $nombre = $nombre !== '' ? Str::limit($nombre, 80, '') : 'pieza';

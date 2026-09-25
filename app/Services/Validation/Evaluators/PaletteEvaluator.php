@@ -31,8 +31,35 @@ use Illuminate\Support\Collection;
  *    ese color; exigir pureza absoluta genera ruido que hace que nadie lea
  *    los hallazgos.
  */
-final class PaletteEvaluator implements Evaluator
+final class PaletteEvaluator implements Evaluator, ReportsUndetermined
 {
+    public function undetermined(Asset $asset, Collection $rules, ?string $channel): array
+    {
+        if (($asset->extracted_palette ?? []) === []) {
+            return $rules->mapWithKeys(fn (Rule $r): array => [
+                $r->code => 'No se pudo extraer la paleta de la pieza: no hay colores contra los cuales comparar.',
+            ])->all();
+        }
+
+        $motivos = [];
+
+        foreach ($rules as $rule) {
+            $palette = $this->paletteFor($rule, $asset);
+
+            if ($palette === null) {
+                $motivos[$rule->code] = 'La regla no tiene paleta asociada.';
+
+                continue;
+            }
+
+            if ($palette->colors()->where('is_forbidden', false)->doesntExist()) {
+                $motivos[$rule->code] = 'La paleta asociada no tiene colores autorizados: solo se pudieron revisar los prohibidos.';
+            }
+        }
+
+        return $motivos;
+    }
+
     public function __construct(
         private float $minShare = 0.02,
         private float $forbiddenMinShare = 0.005,

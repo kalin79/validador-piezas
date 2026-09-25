@@ -65,9 +65,12 @@ class BrandAssetForm
                     FileUpload::make('storage_path')
                         ->label('Archivo')
                         ->image()
-                        ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
+                        // Sin SVG: puede llevar scripts, y el motor de color no
+                        // lo lee de todos modos.
+                        ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
                         ->maxSize(10 * 1024)
-                        ->disk('public')
+                        ->disk(fn (): string => (string) config('filesystems.piezas_disk', 'local'))
+                        ->visibility('private')
                         ->directory('marca/logos')
                         ->imagePreviewHeight('120')
                         ->required(),

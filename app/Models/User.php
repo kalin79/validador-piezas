@@ -19,7 +19,7 @@ use Spatie\Permission\Traits\HasRoles;
 use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable implements FilamentUser
 {
-    use HasApiTokens;   // <-- agregar    
+    use HasApiTokens;    
     use HasFactory;
     use HasRoles;
     use Notifiable;
@@ -145,6 +145,47 @@ class User extends Authenticatable implements FilamentUser
             ->pluck('client_id')
             ->map(intval(...))
             ->values();
+    }
+
+    /**
+     * Clientes a los que el usuario tiene acceso COMPLETO (todas sus marcas),
+     * concedido por un equipo en team_client_access.
+     *
+     * No es lo mismo que accessibleClientIds(): esa incluye un cliente en
+     * cuanto el usuario ve una sola de sus marcas. Para decisiones que afectan
+     * a todo el cliente (reglas corporativas, dar acceso al cliente entero)
+     * hace falta este alcance, no aquel.
+     *
+     * @return Collection<int, int>
+     */
+    public function fullAccessClientIds(): Collection
+    {
+        if ($this->hasGlobalAccess()) {
+            return Client::query()->pluck('id')->map(intval(...))->values();
+        }
+
+        $teamIds = $this->teams()->where('teams.is_active', true)->pluck('teams.id');
+
+        if ($teamIds->isEmpty()) {
+            return collect();
+        }
+
+        return DB::table('team_client_access')
+            ->whereIn('team_id', $teamIds)
+            ->distinct()
+            ->pluck('client_id')
+            ->map(intval(...))
+            ->values();
+    }
+
+    /**
+     * Equipos a los que pertenece el usuario (ids).
+     *
+     * @return Collection<int, int>
+     */
+    public function teamIds(): Collection
+    {
+        return $this->teams()->pluck('teams.id')->map(intval(...))->values();
     }
 
     public function canAccessBrand(int $brandId): bool

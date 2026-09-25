@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\Submissions;
 
+use Illuminate\Database\Eloquent\Builder;
+
 use App\Filament\Resources\Submissions\Pages\CreateSubmission;
 use App\Filament\Resources\Submissions\Pages\EditSubmission;
 use App\Filament\Resources\Submissions\Pages\ListSubmissions;
@@ -60,5 +62,24 @@ class SubmissionResource extends Resource
             'create' => CreateSubmission::route('/create'),
             'edit' => EditSubmission::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * Mismo criterio que SubmissionPolicy::view, aplicado a la consulta base:
+     * alcance por marca y, con solo submission.view_own, unicamente las cargas
+     * propias.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $user = auth()->user();
+
+        $query = parent::getEloquentQuery()
+            ->whereIn('brand_id', $user->accessibleBrandIds());
+
+        if (! $user->hasPermissionTo('submission.view_any') && ! $user->hasPermissionTo('submission.view_brand')) {
+            $query->where('user_id', $user->id);
+        }
+
+        return $query;
     }
 }

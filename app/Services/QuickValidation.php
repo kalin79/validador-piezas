@@ -47,7 +47,7 @@ final class QuickValidation
     ): ValidationRun {
         $submission = $this->submissionFor($brand, $userId, $source, $channel, $externalRef);
 
-        $asset = $this->ingestor->ingest($submission, $file, config('filesystems.default', 'local'));
+        $asset = $this->ingestor->ingest($submission, $file, config('filesystems.piezas_disk', 'local'));
 
         // Sincrono a proposito: quien llama espera el veredicto en la misma
         // peticion. Con QUEUE_CONNECTION=sync despachar el Job daria lo mismo,

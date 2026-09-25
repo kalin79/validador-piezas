@@ -1,2 +1,3 @@
+# Herramienta interna: no indexar.
 User-agent: *
-Disallow:
+Disallow: /

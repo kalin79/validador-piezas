@@ -33,6 +33,7 @@ class EditPromptTemplate extends EditRecord
                     $record->alcance(),
                 ))
                 ->visible(fn (PromptTemplate $record): bool => $record->status === RuleSetStatus::Draft)
+                ->authorize('publish')
                 ->action(function (PromptTemplate $record): void {
                     // Retirar las hermanas es responsabilidad del observer,
                     // para que la invariante valga tambien fuera del panel.
@@ -55,6 +56,8 @@ class EditPromptTemplate extends EditRecord
                 ->requiresConfirmation()
                 ->modalDescription('Se crea un borrador con este mismo contenido y alcance. Esta version queda intacta y sigue vigente hasta que publiques la nueva.')
                 ->visible(fn (PromptTemplate $record): bool => $record->status !== RuleSetStatus::Draft)
+                ->authorize(fn (PromptTemplate $record): bool => (bool) auth()->user()?->can('create', PromptTemplate::class)
+                    && (bool) auth()->user()?->can('view', $record))
                 ->action(function (PromptTemplate $record) {
                     $siguiente = PromptTemplate::siguienteVersion(
                         $record->key,

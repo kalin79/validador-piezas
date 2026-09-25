@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Enums\Severity;
+use App\Enums\VerdictStatus;
 use App\Models\Brand;
 use App\Models\ValidationRun;
 use App\Services\QuickValidation;
+use App\Services\Validation\RuleStatusReport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -35,6 +37,28 @@ final class ValidationController
 
         $usuario = $request->user();
 
+        // El login lo revisa, pero un permiso retirado despues no invalidaba
+        // el token: se comprueba en cada validacion, que es la que cuesta.
+        if (! $usuario->hasPermissionTo('validation.trigger')) {
+            return response()->json([
+                'error' => 'sin_permiso',
+                'message' => 'Tu usuario no tiene permiso para validar piezas.',
+            ], 403);
+        }
+
+        if (filled($datos['channel'] ?? null)
+            && ! array_key_exists($datos['channel'], (array) config('channels.presets', []))) {
+            throw ValidationException::withMessages([
+                'channel' => 'Canal no registrado. Validos: '.implode(', ', array_keys((array) config('channels.presets', []))),
+            ]);
+        }
+
+        // Elegir modelo es elegir el rigor del juicio: solo super_admin. Para
+        // el resto se usa el configurado (queda registrado en audit.model).
+        if (! $usuario->hasRole('super_admin')) {
+            $datos['model'] = null;
+        }
+
         try {
             $brand = QuickValidation::resolveBrand(
                 $datos['brand'],
@@ -60,7 +84,7 @@ final class ValidationController
                 brand: $brand,
                 file: $request->file('image'),
                 userId: $usuario->id,
-                source: $request->header('X-Origen', 'api'),
+                source: mb_substr(preg_replace('/[^a-z0-9_\-]/i', '', (string) $request->header('X-Origen', 'api')) ?: 'api', 0, 40),
                 channel: $datos['channel'] ?? null,
                 externalRef: $datos['external_ref'] ?? null,
                 model: $datos['model'] ?? null,
@@ -70,8 +94,10 @@ final class ValidationController
 
             return response()->json([
                 'error' => 'validation_failed',
-                'message' => 'No se pudo completar la validacion.',
-                'detail' => $e->getMessage(),
+                // El detalle queda en el log (report). Hacia afuera no se
+                // exponen mensajes internos: pueden incluir rutas, SQL o la
+                // respuesta cruda del proveedor de IA.
+                'message' => 'No se pudo completar la validacion. El error quedo registrado.',
             ], 500);
         }
 
@@ -157,35 +183,27 @@ final class ValidationController
         $meta = (array) ($run->deterministic_results ?? []);
         $veredicto = $run->verdict;
 
-        $conHallazgo = $run->findings->pluck('rule_id')->filter()->unique()->flip();
         $iaCorrio = ($meta['ai_ran'] ?? false) === true;
         $iaSimulada = ($meta['ai_simulated'] ?? false) === true;
 
-        $cumplidas = [];
-        $sinEvaluar = [];
-
-        foreach (($run->resolved_rules_snapshot ?? []) as $r) {
-            if ($conHallazgo->has($r['rule_id'] ?? null)) {
-                continue;
-            }
-
-            $determinista = ($r['type'] ?? '') === 'deterministic';
-
-            if ($determinista || ($iaCorrio && ! $iaSimulada)) {
-                $cumplidas[] = $r['code'] ?? '?';
-
-                continue;
-            }
-
-            $sinEvaluar[] = $r['code'] ?? '?';
-        }
+        // Estado por regla desde la cobertura registrada: "cumple" solo si se
+        // evaluo de verdad. Antes toda regla determinista sin hallazgo salia
+        // como cumplida, se hubiera medido o no.
+        $reporte = RuleStatusReport::for($run);
+        $cumplidas = RuleStatusReport::codes($reporte, RuleStatusReport::CUMPLE);
+        $sinEvaluar = RuleStatusReport::codes($reporte, RuleStatusReport::PENDIENTE);
+        $incumplidas = RuleStatusReport::codes($reporte, RuleStatusReport::INCUMPLE);
+        $pendientes = (array) ($meta['pending_rules'] ?? []);
 
         return [
             'id' => $run->public_id,
             'verdict' => $veredicto?->status->value,
             'verdict_label' => $veredicto?->status->label(),
             'score' => $veredicto?->score !== null ? round((float) $veredicto->score, 1) : null,
-            'passed' => $veredicto?->status->value === 'approved',
+            // Solo una aprobacion limpia habilita el envio. "Requiere revision"
+            // y "sin evaluar" nunca cuentan como aprobado.
+            'passed' => $veredicto?->status === VerdictStatus::Approved,
+            'can_send_to_director' => $veredicto?->status->habilitaEnvio() ?? false,
 
             'brand' => [
                 'ref' => $brand->client->slug.'/'.$brand->slug,
@@ -195,11 +213,17 @@ final class ValidationController
 
             'rules' => [
                 'applied' => count($run->resolved_rules_snapshot ?? []),
-                'failed' => $conHallazgo->count(),
+                'failed' => count($incumplidas),
                 'passed' => count($cumplidas),
                 'not_evaluated' => count($sinEvaluar),
                 'not_evaluated_codes' => $sinEvaluar,
+                'not_evaluated_reasons' => array_map(
+                    static fn (array $p): ?string => $p['reason'] ?? null,
+                    $pendientes,
+                ),
                 'passed_codes' => $cumplidas,
+                'failed_codes' => $incumplidas,
+                'coverage_recorded' => $reporte['con_cobertura'],
             ],
 
             'findings' => $run->findings
@@ -236,6 +260,7 @@ final class ValidationController
                 'model' => $run->model_identifier,
                 'ai_evaluated' => $iaCorrio && ! $iaSimulada,
                 'ai_simulated' => $iaSimulada,
+                'ai_stop_reason' => $meta['ai_stop_reason'] ?? null,
                 'cost_usd' => $run->cost_usd !== null ? (float) $run->cost_usd : null,
                 'channel' => $run->asset?->submission?->channel,
                 'format_checked' => $run->asset?->submission?->channel !== null,

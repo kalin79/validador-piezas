@@ -78,7 +78,7 @@ class PromptTemplatesTable
 
                 SelectFilter::make('client_id')
                     ->label('Cliente')
-                    ->relationship('client', 'name')
+                    ->relationship('client', 'name', fn (\Illuminate\Database\Eloquent\Builder $query) => \App\Support\Alcance::clientesVisibles($query))
                     ->searchable(),
             ])
             ->recordActions([
@@ -97,6 +97,8 @@ class PromptTemplatesTable
                     ->modalDescription(fn (PromptTemplate $r): string => 'Se copia el contenido a un borrador editable con el mismo alcance ('
                         .$r->alcance().'). Esta version queda intacta y sigue vigente hasta que publiques la nueva.')
                     ->visible(fn (PromptTemplate $r): bool => $r->status !== RuleSetStatus::Draft)
+                    ->authorize(fn (PromptTemplate $record): bool => (bool) auth()->user()?->can('create', PromptTemplate::class)
+                        && (bool) auth()->user()?->can('view', $record))
                     ->action(function (PromptTemplate $record) {
                         $siguiente = PromptTemplate::siguienteVersion(
                             $record->key,

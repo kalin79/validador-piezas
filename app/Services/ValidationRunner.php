@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\RuleOutcome;
 use App\Enums\ValidationStatus;
 use App\Models\Asset;
 use App\Models\ValidationRun;
 use App\Services\Validation\AiEvaluator;
+use App\Services\Validation\Coverage;
 use App\Services\Validation\DeterministicEngine;
 use App\Services\Validation\VerdictCalculator;
 use Illuminate\Support\Facades\DB;
@@ -57,7 +59,8 @@ final class ValidationRunner
         ]);
 
         try {
-            $determinista = $this->engine->run($asset, $resolved, $channel);
+            $coverage = new Coverage();
+            $determinista = $this->engine->run($asset, $resolved, $channel, $coverage);
             $todos = $determinista['findings'];
 
             $meta = [
@@ -68,49 +71,81 @@ final class ValidationRunner
             ];
 
             $actualizacion = [];
+            $juicio = $resolved->judgmentRules();
 
             // La capa de IA solo corre si hay reglas de juicio que evaluar.
-            $corresponde = $withAi && $resolved->judgmentRules()->isNotEmpty();
+            $corresponde = $withAi && $juicio->isNotEmpty();
+
+            if ($juicio->isNotEmpty() && ! $withAi) {
+                foreach ($juicio as $regla) {
+                    $coverage->mark($regla->code, RuleOutcome::NotEvaluated, 'AiEvaluator', 'La validacion se pidio sin la capa de IA.');
+                }
+            }
 
             if ($corresponde) {
                 try {
                     $ia = $this->ai()->evaluate($asset, $resolved, $channel, $determinista['findings'], $model);
-
-                    $todos = array_merge($todos, $ia['findings']);
                     $respuesta = $ia['response'];
 
                     $meta['ai_ran'] = true;
                     $meta['ai_simulated'] = $respuesta->simulated;
-                    $meta['ai_findings'] = count($ia['findings']);
+                    $meta['ai_stop_reason'] = $respuesta->stopReason;
                     // Se deja constancia de si el modelo lo eligio una persona
                     // o vino de la configuracion. En auditoria importa: un
                     // veredicto obtenido con un modelo elegido a mano no es
                     // comparable con el flujo normal sin decirlo.
                     $meta['model_requested'] = $model;
                     $meta['ai_discarded'] = $ia['discarded'];
+                    $meta['ai_user_prompt_sha256'] = hash('sha256', $ia['user_prompt']);
 
                     $actualizacion = [
                         'prompt_template_id' => $ia['template']->id,
                         'model_identifier' => $respuesta->model,
                         'input_tokens' => $respuesta->inputTokens,
                         'output_tokens' => $respuesta->outputTokens,
-                        'cost_usd' => $respuesta->costUsd,
                         'raw_model_response' => json_encode($respuesta->raw, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR),
                     ];
 
-                    if (filled($ia['extracted_text'])) {
-                        $asset->update(['extracted_text' => $ia['extracted_text']]);
+                    if ($respuesta->simulated) {
+                        // El driver simulado no miro la pieza. Nada de lo que
+                        // devuelve (hallazgos, logo, texto) se guarda como
+                        // evidencia, y no hay costo real que registrar.
+                        $meta['ai_findings'] = 0;
+                        $actualizacion['cost_usd'] = 0;
+
+                        foreach ($juicio as $regla) {
+                            $coverage->mark($regla->code, RuleOutcome::NotEvaluated, 'AiEvaluator', 'Driver de IA simulado: la pieza no fue analizada.');
+                        }
+                    } else {
+                        $todos = array_merge($todos, $ia['findings']);
+                        $meta['ai_findings'] = count($ia['findings']);
+                        $actualizacion['cost_usd'] = $respuesta->costUsd;
+
+                        foreach ($ia['coverage'] as $codigo => $c) {
+                            $coverage->mark($codigo, $c['outcome'], 'AiEvaluator', $c['reason']);
+                        }
+
+                        if (filled($ia['extracted_text'])) {
+                            $asset->update(['extracted_text' => $ia['extracted_text']]);
+                        }
                     }
                 } catch (Throwable $e) {
-                    // Un fallo de la IA no invalida el analisis determinista:
-                    // se conserva lo medido y se deja constancia de lo que falto.
+                    // Un fallo de la IA no invalida el analisis determinista,
+                    // pero sus reglas quedan en error: nunca como cumplidas.
                     $meta['ai_error'] = $e->getMessage();
+
+                    foreach ($juicio as $regla) {
+                        $coverage->mark($regla->code, RuleOutcome::Error, 'AiEvaluator', 'La evaluacion con IA fallo: '.mb_substr($e->getMessage(), 0, 300));
+                    }
                 }
             }
 
             $reglasAplicadas = $resolved->rules->count();
+            $pendientes = $coverage->pending($resolved->rules->pluck('code'));
+            $meta['coverage'] = $coverage->toArray();
+            $meta['pending_rules'] = $pendientes;
 
-            DB::transaction(function () use ($run, $todos, $brand, $reglasAplicadas): void {
+            DB::transaction(function () use ($run, $todos, $brand, $reglasAplicadas, $pendientes): void {
                 foreach ($todos as $draft) {
                     $run->findings()->create($draft->toAttributes());
                 }
@@ -120,6 +155,7 @@ final class ValidationRunner
                         $run->findings()->get(),
                         $brand,
                         $reglasAplicadas,
+                        $pendientes,
                     )
                 );
             });

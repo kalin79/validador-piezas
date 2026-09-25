@@ -57,7 +57,7 @@
 
         try {
             $urlPieza = $run->asset
-                ? \Illuminate\Support\Facades\Storage::disk($run->asset->storage_disk)->url($run->asset->storage_path)
+                ? $run->asset->url()
                 : null;
         } catch (\Throwable) {
             $urlPieza = null;
@@ -306,6 +306,7 @@
 
                     <x-filament::input.wrapper>
                         <x-filament::input.select wire:model.live="veredictoFinal">
+                            <option value="">Elige un veredicto</option>
                             <option value="approved">Aprobado</option>
                             <option value="approved_with_observations">Aprobado con observaciones</option>
                             <option value="rejected">Rechazado</option>

@@ -44,8 +44,7 @@
 
     if ($run?->asset !== null) {
         try {
-            $urlPieza = \Illuminate\Support\Facades\Storage::disk($run->asset->storage_disk)
-                ->url($run->asset->storage_path);
+            $urlPieza = $run->asset->url();
         } catch (\Throwable) {
             $urlPieza = null;
         }
@@ -71,19 +70,11 @@
             ];
         }
 
-        $conHallazgo = $run->findings->pluck('rule_id')->filter()->unique()->flip();
-
-        foreach (($run->resolved_rules_snapshot ?? []) as $r) {
-            if ($conHallazgo->has($r['rule_id'] ?? null)) {
-                continue;
-            }
-
-            if (($r['type'] ?? '') === 'deterministic' || $iaReal) {
-                $cumplidas[] = $r['code'] ?? '?';
-            } else {
-                $sinEvaluar[] = $r['code'] ?? '?';
-            }
-        }
+        // Estado por regla desde la cobertura registrada: "cumple" solo si
+        // se evaluo de verdad (ver RuleStatusReport).
+        $reporteReglas = \App\Services\Validation\RuleStatusReport::for($run);
+        $cumplidas = \App\Services\Validation\RuleStatusReport::codes($reporteReglas, 'cumple');
+        $sinEvaluar = \App\Services\Validation\RuleStatusReport::codes($reporteReglas, 'pendiente');
 
         $v = $run->verdict;
         $puntaje = $v?->score !== null ? (float) $v->score : null;
@@ -259,15 +250,29 @@
             </div>
 
             <div class="vr-field">
-                <div class="vr-titulo">Modelo de evaluacion</div>
+                <div class="vr-titulo">Canal de publicacion</div>
                 <x-filament::input.wrapper>
-                    <x-filament::input.select wire:model="modelo">
-                        @foreach ($this->modelos as $id => $etiqueta)
+                    <x-filament::input.select wire:model="canal">
+                        <option value="">Sin canal (no se valida formato)</option>
+                        @foreach ($this->canales as $id => $etiqueta)
                             <option value="{{ $id }}">{{ $etiqueta }}</option>
                         @endforeach
                     </x-filament::input.select>
                 </x-filament::input.wrapper>
             </div>
+
+            @if ($this->puedeElegirModelo)
+                <div class="vr-field">
+                    <div class="vr-titulo">Modelo de evaluacion</div>
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select wire:model="modelo">
+                            @foreach ($this->modelos as $id => $etiqueta)
+                                <option value="{{ $id }}">{{ $etiqueta }}</option>
+                            @endforeach
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </div>
+            @endif
 
             <x-filament::button wire:click="validar" wire:loading.attr="disabled" size="lg" class="w-full">
                 <span wire:loading.remove wire:target="validar">Validar pieza</span>
@@ -288,8 +293,8 @@
                           d="M11.25 11.25h1.5v5.25m-1.5 0h3m-3.75-9h.008v.008h-.008V7.5ZM21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
                 </svg>
                 <div>
-                    Sin canal de publicacion no se evaluan dimensiones, relacion de aspecto ni peso.
-                    Todo lo demas se evalua igual: color, contraste, copy, tono, cumplimiento y logo.
+                    Sin canal de publicacion no se pueden verificar dimensiones, relacion de aspecto ni peso.
+                    Si la marca tiene reglas de formato, quedaran como no verificadas y la pieza no podra salir aprobada.
                 </div>
             </div>
         </div>
@@ -364,8 +369,8 @@
                                       d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
                             </svg>
                             <div>
-                                Este veredicto <strong>no cubre {{ count($sinEvaluar) }} regla(s)</strong> de juicio.
-                                La pieza puede incumplir alguna sin que aparezca aqui.
+                                <strong>{{ count($sinEvaluar) }} regla(s) no se pudieron verificar.</strong>
+                                Por eso la pieza no puede darse por aprobada: revisa el detalle o pide revision humana.
                             </div>
                         </div>
                     @endif
@@ -385,7 +390,7 @@
 
                     @if (count($hallazgos) === 0)
                         <div style="font-size:.875rem; opacity:.55">
-                            Ninguno. La pieza cumple todas las reglas evaluadas.
+                            Ninguno entre las reglas que se pudieron verificar.
                         </div>
                     @endif
 

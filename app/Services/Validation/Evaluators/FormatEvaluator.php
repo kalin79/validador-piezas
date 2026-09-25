@@ -19,8 +19,23 @@ use Illuminate\Support\Collection;
  * publicarse, y ningun analisis de copy vale nada si la mitad de la pieza
  * no se va a ver.
  */
-final class FormatEvaluator implements Evaluator
+final class FormatEvaluator implements Evaluator, ReportsUndetermined
 {
+    public function undetermined(Asset $asset, Collection $rules, ?string $channel): array
+    {
+        $motivo = match (true) {
+            $channel === null => 'La carga no declara canal: no hay especificacion contra la cual medir el formato.',
+            config("channels.presets.{$channel}") === null => "El canal '{$channel}' no tiene especificacion registrada: no se midieron dimensiones.",
+            default => null,
+        };
+
+        if ($motivo === null) {
+            return [];
+        }
+
+        return $rules->mapWithKeys(fn (Rule $r): array => [$r->code => $motivo])->all();
+    }
+
     public function handles(): array
     {
         return [RuleCategory::Composition->value];

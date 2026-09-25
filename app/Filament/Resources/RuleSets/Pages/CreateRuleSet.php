@@ -46,6 +46,12 @@ class CreateRuleSet extends CreateRecord
         $data['status'] = RuleSetStatus::Draft->value;
         $data['created_by'] = auth()->id();
 
+        // Segunda linea: el dueno elegido tiene que estar al alcance de quien
+        // crea, verificado con la misma politica que rige la edicion. Las
+        // opciones del formulario ya lo acotan; esto cubre la peticion
+        // manipulada.
+        abort_unless(auth()->user()?->can('update', new RuleSet($data)) === true, 403);
+
         return $data;
     }
 }

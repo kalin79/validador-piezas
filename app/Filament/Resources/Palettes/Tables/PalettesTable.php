@@ -58,13 +58,13 @@ class PalettesTable
             ->filters([
                 SelectFilter::make('client')
                     ->label('Cliente')
-                    ->relationship('brand.client', 'name')
+                    ->relationship('brand.client', 'name', fn (\Illuminate\Database\Eloquent\Builder $query) => \App\Support\Alcance::clientesVisibles($query))
                     ->searchable()
                     ->preload(),
 
                 SelectFilter::make('brand_id')
                     ->label('Marca')
-                    ->relationship('brand', 'name')
+                    ->relationship('brand', 'name', fn (\Illuminate\Database\Eloquent\Builder $query) => \App\Support\Alcance::marcasVisibles($query))
                     ->searchable()
                     ->preload(),
             ])

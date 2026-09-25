@@ -153,7 +153,7 @@ final class PromptBuilder
     private function deterministas(array $findings): string
     {
         if ($findings === []) {
-            return 'El analisis por codigo no encontro incumplimientos.';
+            return 'El analisis por codigo no registro hallazgos. Esto no significa que todas las reglas se hayan podido medir: no lo tomes como confirmacion de cumplimiento.';
         }
 
         return collect($findings)->map(fn (FindingDraft $f): string => sprintf(

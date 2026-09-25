@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Validation;
 
+use App\Enums\RuleOutcome;
 use App\Enums\RuleType;
 use App\Models\Asset;
 use App\Models\Rule;
@@ -12,6 +13,7 @@ use App\Services\Validation\Evaluators\DuplicateEvaluator;
 use App\Services\Validation\Evaluators\Evaluator;
 use App\Services\Validation\Evaluators\FormatEvaluator;
 use App\Services\Validation\Evaluators\PaletteEvaluator;
+use App\Services\Validation\Evaluators\ReportsUndetermined;
 use App\Services\ResolvedRuleSet;
 use Illuminate\Support\Collection;
 use Throwable;
@@ -39,10 +41,12 @@ final class DeterministicEngine
     }
 
     /**
-     * @return array{findings: array<int, FindingDraft>, errors: array<int, string>}
+     * @return array{findings: array<int, FindingDraft>, errors: array<int, string>, coverage: Coverage}
      */
-    public function run(Asset $asset, ResolvedRuleSet $resolved, ?string $channel): array
+    public function run(Asset $asset, ResolvedRuleSet $resolved, ?string $channel, ?Coverage $coverage = null): array
     {
+        $coverage ??= new Coverage();
+
         $deterministas = $resolved->rules->filter(
             static fn (Rule $rule): bool => $rule->type === RuleType::Deterministic
         );
@@ -59,18 +63,52 @@ final class DeterministicEngine
                 continue;
             }
 
+            $motor = class_basename($evaluator);
+
             try {
+                $sinDeterminar = $evaluator instanceof ReportsUndetermined
+                    ? $evaluator->undetermined($asset, $aplicables, $channel)
+                    : [];
+
                 foreach ($evaluator->evaluate($asset, $aplicables, $channel) as $finding) {
                     $findings[] = $finding;
                 }
+
+                foreach ($aplicables as $regla) {
+                    if (isset($sinDeterminar[$regla->code])) {
+                        $coverage->mark($regla->code, RuleOutcome::NotDeterminable, $motor, $sinDeterminar[$regla->code]);
+                    } else {
+                        $coverage->mark($regla->code, RuleOutcome::Evaluated, $motor);
+                    }
+                }
             } catch (Throwable $e) {
                 // Un evaluador que falla no puede tumbar la validacion completa,
-                // pero tampoco puede desaparecer en silencio: se registra.
-                $errors[] = sprintf('%s: %s', class_basename($evaluator), $e->getMessage());
+                // pero tampoco puede desaparecer en silencio: se registra, y sus
+                // reglas quedan en error. Antes quedaban como "cumplidas".
+                $errors[] = sprintf('%s: %s', $motor, $e->getMessage());
+
+                foreach ($aplicables as $regla) {
+                    $coverage->mark($regla->code, RuleOutcome::Error, $motor, 'El evaluador fallo: '.$e->getMessage());
+                }
             }
         }
 
-        return ['findings' => $findings, 'errors' => $errors];
+        // Reglas deterministas cuya categoria no tiene evaluador: nadie las
+        // mide, y decir que cumplen seria inventarlo.
+        $soportadas = $this->supportedCategories();
+
+        foreach ($deterministas as $regla) {
+            if (! in_array($regla->category->value, $soportadas, true)) {
+                $coverage->mark(
+                    $regla->code,
+                    RuleOutcome::NotEvaluated,
+                    'DeterministicEngine',
+                    sprintf('No existe evaluador por codigo para la categoria "%s".', $regla->category->value),
+                );
+            }
+        }
+
+        return ['findings' => $findings, 'errors' => $errors, 'coverage' => $coverage];
     }
 
     /**

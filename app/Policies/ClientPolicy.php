@@ -35,7 +35,7 @@ class ClientPolicy extends BasePolicy
     public function update(User $user, Client $client): bool
     {
         return $this->puede($user, 'client.manage')
-            && $this->alcanzaCliente($user, $client->id);
+            && $this->alcanzaClienteCompleto($user, $client->id);
     }
 
     /**

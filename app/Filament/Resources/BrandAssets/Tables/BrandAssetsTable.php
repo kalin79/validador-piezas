@@ -24,7 +24,7 @@ class BrandAssetsTable
             ->columns([
                 ImageColumn::make('storage_path')
                     ->label('')
-                    ->disk('public')
+                    ->getStateUsing(fn (\App\Models\BrandAsset $record): ?string => $record->url())
                     ->height(44),
 
                 TextColumn::make('brand.name')
@@ -91,7 +91,7 @@ class BrandAssetsTable
             ->filters([
                 SelectFilter::make('brand_id')
                     ->label('Marca')
-                    ->relationship('brand', 'name')
+                    ->relationship('brand', 'name', fn (\Illuminate\Database\Eloquent\Builder $query) => \App\Support\Alcance::marcasVisibles($query))
                     ->searchable()
                     ->preload(),
 
