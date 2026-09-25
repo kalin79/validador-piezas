@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Models\Asset;
 use App\Models\Submission;
+use App\Support\Image\LimiteDePixeles;
 use App\Support\Image\PaletteExtractor;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -41,6 +42,8 @@ final class AssetIngestor
         }
 
         $disk ??= config('filesystems.piezas_disk', 'local');
+
+        LimiteDePixeles::verificar($file->getRealPath());
 
         // El hash se calcula sobre el archivo temporal, antes de moverlo:
         // es la huella del binario que el usuario subio, no del que quedo guardado.
@@ -116,6 +119,8 @@ final class AssetIngestor
                 "Formato no admitido: {$mime}. Se aceptan JPG, PNG y WEBP."
             );
         }
+
+        LimiteDePixeles::verificar($absoluto);
 
         $hash = hash_file('sha256', $absoluto);
 

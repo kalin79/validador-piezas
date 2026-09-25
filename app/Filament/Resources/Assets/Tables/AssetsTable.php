@@ -30,6 +30,8 @@ class AssetsTable
     public static function configure(Table $table): Table
     {
         return $table
+            // Se refresca sola mientras haya validaciones en curso.
+            ->poll(fn (): ?string => \App\Support\Refresco::mientrasHayaValidaciones())
             // Se carga por adelantado lo que pinta cada fila. Sin esto, con el
             // modo estricto de Eloquent activado la pagina falla en vez de
             // degradarse en silencio, que es justo lo que queremos.

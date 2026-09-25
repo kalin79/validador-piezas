@@ -31,6 +31,8 @@ final class ImagePreparer
             throw new RuntimeException("No se puede leer la pieza: {$path}");
         }
 
+        \App\Support\Image\LimiteDePixeles::verificar($path);
+
         $info = @getimagesize($path);
 
         if ($info === false) {

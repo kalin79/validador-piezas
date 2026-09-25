@@ -35,12 +35,19 @@ class EditPromptTemplate extends EditRecord
                 ->visible(fn (PromptTemplate $record): bool => $record->status === RuleSetStatus::Draft)
                 ->authorize('publish')
                 ->action(function (PromptTemplate $record): void {
-                    // Retirar las hermanas es responsabilidad del observer,
-                    // para que la invariante valga tambien fuera del panel.
-                    $record->update([
-                        'status' => RuleSetStatus::Published->value,
-                        'published_at' => now(),
-                    ]);
+                    // Bloqueo, verificacion y retiro en una sola transaccion
+                    // (ver App\Services\Publicacion).
+                    try {
+                        app(\App\Services\Publicacion::class)->publicarPlantilla($record);
+                    } catch (\RuntimeException $e) {
+                        Notification::make()
+                            ->title('No se publico')
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+
+                        return;
+                    }
 
                     Notification::make()
                         ->title("Publicada la version {$record->version}")

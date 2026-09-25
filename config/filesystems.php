@@ -24,6 +24,9 @@ return [
     */
     'piezas_disk' => env('PIEZAS_DISK', 'local'),
 
+    // Tope de resolucion de una pieza, en megapixeles. Ver LimiteDePixeles.
+    'piezas_max_megapixeles' => (int) env('PIEZAS_MAX_MEGAPIXELES', 50),
+
     /*
     |--------------------------------------------------------------------------
     | Filesystem Disks

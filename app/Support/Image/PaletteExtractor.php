@@ -90,6 +90,8 @@ final class PaletteExtractor
             throw new RuntimeException("No se puede leer la imagen: {$path}");
         }
 
+        LimiteDePixeles::verificar($path);
+
         $info = @getimagesize($path);
 
         if ($info === false) {

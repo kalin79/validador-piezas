@@ -26,7 +26,9 @@ class VerificarIntegridad extends Command
 {
     protected $signature = 'integridad:verificar
                             {--desde= : Solo piezas creadas desde esta fecha (Y-m-d).}
-                            {--limite=0 : Maximo de piezas a revisar. 0 = todas.}';
+                            {--limite=0 : Maximo de piezas a revisar. 0 = todas.}
+                            {--todos : Lista todos los problemas, no solo los primeros 20.}
+                            {--avisar : Notifica en el panel a los super_admin si hay problemas nuevos.}';
 
     protected $description = 'Verifica que los archivos en disco coincidan con su huella registrada';
 
@@ -75,13 +77,8 @@ class VerificarIntegridad extends Command
         $this->line('  alterados: '.count($alterados));
         $this->line('  ausentes:  '.count($ausentes));
 
-        foreach (array_slice($alterados, 0, 20) as $a) {
-            $this->error('  ALTERADO  '.$a);
-        }
-
-        foreach (array_slice($ausentes, 0, 20) as $a) {
-            $this->error('  AUSENTE   '.$a);
-        }
+        $this->listar($alterados, 'ALTERADO ');
+        $this->listar($ausentes, 'AUSENTE  ');
 
         // Los activos de marca no se validan contra hash al usarse, pero si
         // cambian sin que nadie lo note, las validaciones futuras se comparan
@@ -119,7 +116,23 @@ class VerificarIntegridad extends Command
         $this->newLine();
 
         if ($hayProblemas) {
-            $this->error('Hay archivos que no coinciden con su huella. Revisa antes del proximo respaldo.');
+            // Alterado y ausente son problemas distintos: uno es evidencia
+            // que cambio, el otro evidencia que ya no existe.
+            if ($alterados !== []) {
+                $this->error(count($alterados).' pieza(s) no coinciden con su huella: el archivo cambio despues de validarse.');
+            }
+
+            if ($ausentes !== []) {
+                $this->error(count($ausentes).' pieza(s) ya no existen en disco: su veredicto queda sin evidencia.');
+            }
+
+            if ($activosMal !== []) {
+                $this->error(count($activosMal).' activo(s) de marca ausentes o alterados.');
+            }
+
+            if ($this->option('avisar')) {
+                $this->avisar($alterados, $ausentes, $activosMal);
+            }
 
             return self::FAILURE;
         }
@@ -127,5 +140,58 @@ class VerificarIntegridad extends Command
         $this->info('Todo intacto.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  array<int, string>  $items
+     */
+    private function listar(array $items, string $etiqueta): void
+    {
+        $mostrar = $this->option('todos') ? $items : array_slice($items, 0, 20);
+
+        foreach ($mostrar as $item) {
+            $this->error('  '.$etiqueta.' '.$item);
+        }
+
+        // Antes se cortaba en 20 sin decirlo y el total no cuadraba con la lista.
+        if (count($items) > count($mostrar)) {
+            $this->warn(sprintf('  ... y %d mas. Usa --todos para verlos.', count($items) - count($mostrar)));
+        }
+    }
+
+    /**
+     * Notifica solo cuando el conjunto de problemas cambia respecto de la
+     * corrida anterior. Repetir cada dia el mismo aviso hace que se ignore.
+     *
+     * @param  array<int, string>  $alterados
+     * @param  array<int, string>  $ausentes
+     * @param  array<int, string>  $activosMal
+     */
+    private function avisar(array $alterados, array $ausentes, array $activosMal): void
+    {
+        $huella = hash('sha256', json_encode([$alterados, $ausentes, $activosMal]));
+
+        if (cache()->get('integridad.ultima_huella') === $huella) {
+            $this->line('Mismos problemas que la corrida anterior: no se notifica de nuevo.');
+
+            return;
+        }
+
+        cache()->forever('integridad.ultima_huella', $huella);
+
+        $destinatarios = \App\Models\User::role('super_admin')->where('is_active', true)->get();
+
+        \Filament\Notifications\Notification::make()
+            ->title('Integridad de archivos: hay problemas')
+            ->body(sprintf(
+                '%d alterada(s), %d ausente(s), %d activo(s) de marca con problema. Detalle: php artisan integridad:verificar --todos',
+                count($alterados),
+                count($ausentes),
+                count($activosMal),
+            ))
+            ->danger()
+            ->sendToDatabase($destinatarios);
+
+        $this->line('Aviso enviado a '.$destinatarios->count().' super_admin.');
     }
 }

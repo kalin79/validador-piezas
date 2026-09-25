@@ -44,6 +44,10 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('Accesos'),
             ])
             ->brandName('Validador de Piezas')
+            // Avisos de validacion terminada o fallida (cola en segundo plano)
+            // y alertas de integridad.
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('30s')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
                 AccountWidget::class,

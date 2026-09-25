@@ -11,6 +11,7 @@ use App\Enums\Severity;
 use App\Enums\VerdictStatus;
 use App\Models\Finding;
 use App\Models\HumanReview;
+use App\Models\User;
 use App\Models\ValidationRun;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -49,8 +50,16 @@ final class ReviewRecorder
         array $agregados = [],
         ?string $justificacion = null,
     ): HumanReview {
-        if ($run->humanReviews()->exists()) {
-            throw new RuntimeException('Esta validacion ya fue revisada.');
+        $revisor = User::query()->find($reviewerId)
+            ?? throw new RuntimeException('Revisor inexistente.');
+
+        // Separacion de funciones: quien subio la pieza no la juzga. Si no, un
+        // disenador con rol de revisor podria anular el rechazo de su propia
+        // pieza.
+        $autor = $run->asset?->submission?->user_id;
+
+        if ($autor !== null && (int) $autor === (int) $reviewerId) {
+            throw new RuntimeException('No puedes revisar una pieza que subiste tu.');
         }
 
         $veredictoMaquina = $run->verdict?->status;
@@ -65,9 +74,26 @@ final class ReviewRecorder
             throw new RuntimeException('Al cambiar el veredicto hay que justificarlo.');
         }
 
+        // Cambiar el veredicto de la maquina es un permiso aparte. Resolver un
+        // "requiere revision" no cuenta como anulacion: la maquina no concluyo.
+        if ($veredictoMaquina->esConcluyente()
+            && $veredictoMaquina !== $veredictoFinal
+            && ! $revisor->hasPermissionTo('review.override')) {
+            throw new RuntimeException('No tienes permiso para cambiar el veredicto de la maquina.');
+        }
+
         return DB::transaction(function () use (
             $run, $reviewerId, $veredictoMaquina, $veredictoFinal, $decisiones, $agregados, $justificacion
         ): HumanReview {
+            // La comprobacion va dentro de la transaccion y con la ejecucion
+            // bloqueada: afuera, dos revisores simultaneos pasaban los dos.
+            // El indice unico en human_reviews es la segunda linea.
+            ValidationRun::query()->whereKey($run->id)->lockForUpdate()->first();
+
+            if (HumanReview::query()->where('validation_run_id', $run->id)->exists()) {
+                throw new RuntimeException('Esta validacion ya fue revisada.');
+            }
+
             $registro = [];
 
             foreach ($run->findings as $finding) {

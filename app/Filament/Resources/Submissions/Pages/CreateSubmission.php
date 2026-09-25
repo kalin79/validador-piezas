@@ -54,7 +54,7 @@ class CreateSubmission extends CreateRecord
 
         if ($creados > 0) {
             Notification::make()
-                ->title("{$creados} pieza(s) ingresada(s) y validada(s)")
+                ->title("{$creados} pieza(s) ingresada(s)".(config('queue.default') === 'sync' ? ' y validada(s)' : ', validandose en segundo plano: te avisaremos al terminar'))
                 ->success()
                 ->send();
         }

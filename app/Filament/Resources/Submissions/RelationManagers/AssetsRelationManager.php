@@ -30,6 +30,8 @@ class AssetsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            // Se refresca sola mientras haya validaciones en curso.
+            ->poll(fn (): ?string => \App\Support\Refresco::mientrasHayaValidaciones())
             ->recordTitleAttribute('original_filename')
             // Se cargan por adelantado la ultima ejecucion con su veredicto y
             // sus hallazgos: sin esto, cada fila dispara tres consultas y con

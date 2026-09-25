@@ -52,6 +52,31 @@ class ValidationRun extends Model
      *
      * @return array<int, string>
      */
+    /**
+     * Estados terminales. Una ejecucion completada o fallida no cambia de
+     * estado: sin esta guarda, una fallida podia pasar a completada (y una
+     * completada a fallida) con un simple update.
+     */
+    protected static function booted(): void
+    {
+        static::updating(static function (self $run): void {
+            if (! $run->isDirty('status')) {
+                return;
+            }
+
+            $original = $run->getOriginal('status');
+            $original = $original instanceof ValidationStatus ? $original : ValidationStatus::tryFrom((string) $original);
+
+            if (in_array($original, [ValidationStatus::Completed, ValidationStatus::Failed], true)) {
+                throw new \App\Exceptions\ImmutableRecordException(sprintf(
+                    'La ejecucion %s ya termino (%s) y su estado no puede cambiar.',
+                    $run->public_id,
+                    $original->value,
+                ));
+            }
+        });
+    }
+
     protected function mutableAttributes(): array
     {
         return [

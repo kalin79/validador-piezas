@@ -32,17 +32,19 @@ trait Immutable
 {
     protected static function bootImmutable(): void
     {
-        static::updating(static function ($model): bool {
+        // No devuelve nada a proposito. Los eventos "updating" se despachan
+        // hasta la primera respuesta no nula: devolver true cortaba la cadena
+        // y cualquier otro listener del modelo (como la guarda de estados de
+        // ValidationRun) no llegaba a ejecutarse.
+        static::updating(static function ($model): void {
             $bloqueados = $model->disallowedChanges();
 
-            if ($bloqueados === []) {
-                return true;
+            if ($bloqueados !== []) {
+                throw ImmutableRecordException::forUpdate(static::class, $bloqueados);
             }
-
-            throw ImmutableRecordException::forUpdate(static::class, $bloqueados);
         });
 
-        static::deleting(static function ($model): bool {
+        static::deleting(static function ($model): void {
             throw ImmutableRecordException::forDelete(static::class);
         });
     }

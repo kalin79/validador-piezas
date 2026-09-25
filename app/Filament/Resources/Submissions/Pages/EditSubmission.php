@@ -104,7 +104,7 @@ class EditSubmission extends EditRecord
 
         if ($creados > 0) {
             Notification::make()
-                ->title("{$creados} pieza(s) agregada(s) y validada(s)")
+                ->title("{$creados} pieza(s) agregada(s)".(config('queue.default') === 'sync' ? ' y validada(s)' : ', validandose en segundo plano: te avisaremos al terminar'))
                 ->body('Las piezas anteriores de esta carga no se modificaron.')
                 ->success()
                 ->send();

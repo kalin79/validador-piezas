@@ -75,20 +75,23 @@ if (config('backup.enabled')) {
 }
 
 /*
- * La verificacion de huellas va aparte del interruptor de respaldos.
- *
- * No necesita credenciales ni destino externo: solo recalcula el SHA-256 de
- * cada pieza y lo compara con el registrado al subirla. Tiene valor por si
- * sola, incluso en desarrollo, porque detecta que un archivo dejo de ser el
- * que se valido.
- *
- * Igual queda apagada por defecto para no sorprender a nadie con procesos que
- * no pidio. Se enciende con INTEGRIDAD_PROGRAMADA=true, y mientras tanto se
- * corre a mano:  php artisan integridad:verificar
+ * Verificacion de huellas: diaria, con aviso en el panel a los super_admin
+ * cuando aparecen problemas nuevos. No necesita credenciales ni destino
+ * externo. Se apaga con INTEGRIDAD_PROGRAMADA=false.
  */
-if (env('INTEGRIDAD_PROGRAMADA', false)) {
-    Schedule::command('integridad:verificar')
-        ->weeklyOn(0, '04:30')
+if (config('validador.integridad_programada')) {
+    Schedule::command('integridad:verificar --avisar')
+        ->dailyAt('06:45')
+        ->timezone(config('validador.zona_horaria_tareas'))
         ->onOneServer()
         ->withoutOverlapping();
 }
+
+/*
+ * Cierra las validaciones que quedaron colgadas (proceso muerto, timeout,
+ * despliegue). Sin esto una pieza queda "validandose" para siempre.
+ */
+Schedule::command('validaciones:cerrar-colgadas --minutos='.(int) config('validador.minutos_validacion_colgada', 15))
+    ->everyTenMinutes()
+    ->onOneServer()
+    ->withoutOverlapping();

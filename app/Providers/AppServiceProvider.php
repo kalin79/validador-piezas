@@ -79,7 +79,26 @@ class AppServiceProvider extends ServiceProvider
          * preferible un error visible a una pagina que tarda ocho segundos sin
          * que nadie sepa por que.
          */
-        Model::shouldBeStrict(true);
+        /*
+         * Fuera de produccion, todo estricto: un N+1 o un atributo inexistente
+         * revienta y se corrige antes de salir.
+         *
+         * En produccion, el lazy loading se REGISTRA en vez de lanzar. Antes
+         * era estricto tambien aqui, y cualquier columna nueva de Filament que
+         * leyera una relacion sin precargar convertia un problema de
+         * rendimiento en un error 500 para el usuario.
+         */
+        Model::shouldBeStrict(! $isProduction);
+
+        if ($isProduction) {
+            Model::preventLazyLoading();
+            Model::handleLazyLoadingViolationUsing(static function (Model $model, string $relation): void {
+                \Illuminate\Support\Facades\Log::warning('Lazy loading en produccion', [
+                    'model' => $model::class,
+                    'relation' => $relation,
+                ]);
+            });
+        }
         DB::prohibitDestructiveCommands($isProduction);
 
     }

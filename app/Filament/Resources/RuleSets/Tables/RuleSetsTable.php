@@ -100,38 +100,19 @@ class RuleSetsTable
                     // (o publish_client en nivel cliente) y alcance.
                     ->authorize('publish')
                     ->action(function (RuleSet $record): void {
-                        if ($record->rules()->count() === 0) {
+                        // Bloqueo, verificacion y retiro en una sola transaccion
+                        // (ver App\Services\Publicacion).
+                        try {
+                            $retiradas = app(\App\Services\Publicacion::class)->publicarConjunto($record, auth()->id());
+                        } catch (\RuntimeException $e) {
                             Notification::make()
-                                ->title('El conjunto no tiene reglas')
-                                ->body('Un conjunto vacio publicado aprobaria todo por omision. Agrega al menos una regla.')
+                                ->title('No se publico')
+                                ->body($e->getMessage())
                                 ->danger()
                                 ->send();
 
                             return;
                         }
-
-                        $retiradas = DB::transaction(function () use ($record): int {
-                            // "Publicado" debe significar "vigente", no "estuvo vigente
-                            // alguna vez". Publicar retira las versiones anteriores del
-                            // mismo dueno para que solo haya una activa.
-                            $n = RuleSet::query()
-                                ->where('owner_type', $record->owner_type->value)
-                                ->where('owner_id', $record->owner_id)
-                                ->whereKeyNot($record->getKey())
-                                ->where('status', RuleSetStatus::Published->value)
-                                ->update([
-                                    'status' => RuleSetStatus::Retired->value,
-                                    'updated_at' => now(),
-                                ]);
-
-                            $record->update([
-                                'status' => RuleSetStatus::Published,
-                                'published_at' => now(),
-                                'published_by' => auth()->id(),
-                            ]);
-
-                            return $n;
-                        });
 
                         Notification::make()
                             ->title("Version {$record->version} vigente")
