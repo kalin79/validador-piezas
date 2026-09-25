@@ -31,12 +31,12 @@
     .ci-dato { text-align: right; }
     .ci-dato b { display: block; font-size: .9375rem; }
     .ci-dato span { font-size: .6875rem; color: var(--t2); }
-    .ci-det { padding: 0 1.125rem 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    @media (max-width: 768px) { .ci-det { grid-template-columns: 1fr; } }
+    .ci-det { padding: 0 1.125rem 1rem; display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
     .ci-det h4 { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--t2); margin-bottom: .375rem; }
     .ci-tabla { width: 100%; border-collapse: collapse; font-size: .8125rem; }
     .ci-tabla td { padding: .375rem .25rem; border-bottom: 1px solid var(--b); }
-    .ci-tabla td.r { text-align: right; font-variant-numeric: tabular-nums; }
+    .ci-tabla td.r, .ci-tabla th.r { text-align: right; font-variant-numeric: tabular-nums; }
+    .ci-tabla th { padding: .25rem .25rem .375rem; border-bottom: 1px solid var(--b); font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--t2); text-align: left; white-space: nowrap; }
     .ci-nota { font-size: .75rem; color: var(--t2); margin-top: 1rem; line-height: 1.6; padding: .75rem 1rem; border-radius: .75rem; background: var(--s); }
     .ci-aviso { font-size: .8125rem; margin-top: 1rem; padding: .625rem .875rem; border-radius: .75rem; background: rgba(217,119,6,.10); border: 1px solid rgba(217,119,6,.3); }
     .ci-vacio { text-align: center; padding: 2.5rem 1rem; border: 1px dashed var(--b); border-radius: 1rem; margin-top: 1rem; color: var(--t2); }
@@ -99,16 +99,18 @@
                     <div>
                         <h4>Por marca</h4>
                         <table class="ci-tabla">
+                            <thead><tr><th>Marca</th><th class="r">Validaciones</th><th class="r">Tokens entrada</th><th class="r">Tokens salida</th><th class="r">Costo</th></tr></thead>
                             @foreach ($c['marcas'] as $m)
-                                <tr><td>{{ $m['nombre'] }}</td><td class="r">{{ $n($m['llamadas']) }} val.</td><td class="r">{{ $n($m['entrada'] + $m['salida']) }} tok.</td><td class="r"><b>{{ $usd($m['costo']) }}</b></td></tr>
+                                <tr><td>{{ $m['nombre'] }}</td><td class="r">{{ $n($m['llamadas']) }}</td><td class="r">{{ $n($m['entrada']) }}</td><td class="r">{{ $n($m['salida']) }}</td><td class="r"><b>{{ $usd($m['costo']) }}</b></td></tr>
                             @endforeach
                         </table>
                     </div>
                     <div>
                         <h4>Por modelo</h4>
                         <table class="ci-tabla">
+                            <thead><tr><th>Modelo</th><th class="r">Validaciones</th><th class="r">Tokens entrada</th><th class="r">Tokens salida</th><th class="r">Costo</th></tr></thead>
                             @foreach ($c['modelos'] as $m)
-                                <tr><td>{{ $m['nombre'] }}</td><td class="r">{{ $n($m['llamadas']) }} val.</td><td class="r">{{ $n($m['entrada']) }} / {{ $n($m['salida']) }}</td><td class="r"><b>{{ $usd($m['costo']) }}</b></td></tr>
+                                <tr><td>{{ $m['nombre'] }}</td><td class="r">{{ $n($m['llamadas']) }}</td><td class="r">{{ $n($m['entrada']) }}</td><td class="r">{{ $n($m['salida']) }}</td><td class="r"><b>{{ $usd($m['costo']) }}</b></td></tr>
                             @endforeach
                         </table>
                     </div>
