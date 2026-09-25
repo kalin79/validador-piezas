@@ -60,6 +60,12 @@ class RolesAndPermissionsSeeder extends Seeder
                 'knowledge.view',
             ],
             'brand_admin' => [
+                // Un administrador de marca tambien trabaja: sin estos dos no
+                // podia cargar una pieza, y la salida natural era darle
+                // ademas el rol uploader. Apilar roles para tapar un hueco es
+                // como se llega despues a apilar auditor sin medir el efecto.
+                'submission.create',
+                'submission.view_own',
                 'submission.view_brand',
                 'validation.trigger',
                 'validation.view',

@@ -48,6 +48,16 @@ final class VerdictCalculator
 
     private const DEFAULT_OBSERVATION_THRESHOLD = 90.0;
 
+    /*
+     * Bajo este puntaje la pieza se rechaza aunque no haya ningun bloqueante.
+     *
+     * Cincuenta es la mitad de las reglas incumplidas en peso. A esa altura ya
+     * no es una pieza con observaciones: es una pieza que hay que rehacer, y
+     * decir "aprobada" de ella —aunque sea con observaciones— le quita sentido
+     * a la palabra.
+     */
+    private const DEFAULT_REJECTION_THRESHOLD = 50.0;
+
     /**
      * @param  Collection<int, Finding>  $findings
      * @param  int|null  $rulesApplied  cuantas reglas se resolvieron para la pieza.
@@ -61,7 +71,25 @@ final class VerdictCalculator
     ): array {
         $personalizados = $this->pesosDeclarados($brand);
         $pesos = $this->weightsFor($personalizados);
-        $umbral = (float) ($brand?->setting('observation_threshold') ?? self::DEFAULT_OBSERVATION_THRESHOLD);
+        $umbral = $this->umbral($brand, 'observation_threshold', self::DEFAULT_OBSERVATION_THRESHOLD);
+        $umbralRechazo = $this->umbral($brand, 'rejection_threshold', self::DEFAULT_REJECTION_THRESHOLD);
+
+        /*
+         * Los dos umbrales son cortes sobre la misma recta y tienen que estar
+         * en orden. Con rechazo por encima de observaciones, la banda de
+         * observaciones desaparece sin que nadie lo note. Se recorta y se
+         * avisa: es preferible rechazar de menos que borrar en silencio un
+         * estado entero del sistema.
+         */
+        if ($umbralRechazo > $umbral) {
+            Log::warning('rejection_threshold es mayor que observation_threshold y se recorto', [
+                'brand_id' => $brand?->id,
+                'rejection_threshold' => $umbralRechazo,
+                'observation_threshold' => $umbral,
+            ]);
+
+            $umbralRechazo = $umbral;
+        }
 
         $bloqueantes = $findings->where('severity', Severity::Blocking)->count();
         $mayores = $findings->where('severity', Severity::Major)->count();
@@ -82,8 +110,11 @@ final class VerdictCalculator
         $estado = match (true) {
             $rulesApplied === 0 => VerdictStatus::NotEvaluated,
             $bloqueantes > 0 => VerdictStatus::Rejected,
+            // El bloqueante dice "esto no puede salir". El puntaje bajo dice
+            // "esto esta mal hecho". Las dos cosas terminan en rechazo, pero
+            // por motivos distintos, y el desglose permite separarlas despues.
+            $puntaje < $umbralRechazo => VerdictStatus::Rejected,
             $puntaje < $umbral => VerdictStatus::ApprovedWithObservations,
-            $findings->isNotEmpty() => VerdictStatus::ApprovedWithObservations,
             default => VerdictStatus::Approved,
         };
 
@@ -119,9 +150,13 @@ final class VerdictCalculator
                 // "nadie lo configuro".
                 'weights_source' => $personalizados === null ? 'sistema' : 'personalizados',
                 'observation_threshold' => $umbral,
+                'rejection_threshold' => $umbralRechazo,
                 'rules_applied' => $rulesApplied,
-                'formula_version' => 2,
-                'rule' => 'puntaje de calidad = 100 - suma(peso por severidad); los bloqueantes no penalizan el puntaje pero fuerzan rechazo; cero reglas resueltas produce "sin evaluar"',
+                // Sube a 3 porque cambio la regla del estado, no la del
+                // puntaje. Un veredicto viejo se sigue explicando con la
+                // version con la que se calculo.
+                'formula_version' => 3,
+                'rule' => 'puntaje de calidad = 100 - suma(peso por severidad); los bloqueantes no penalizan el puntaje pero fuerzan rechazo; bajo rejection_threshold se rechaza aunque no haya bloqueantes; bajo observation_threshold se aprueba con observaciones; cero reglas resueltas produce "sin evaluar"',
             ],
         ];
     }
@@ -144,6 +179,47 @@ final class VerdictCalculator
      *
      * @return array<string, mixed>|null
      */
+    /**
+     * Lee un umbral de los ajustes y lo deja utilizable.
+     *
+     * El campo de parametros del panel es un KeyValue y guarda cadenas, no
+     * numeros. Sin esto, "85" llegaria como texto y una cadena vacia se
+     * convertiria en 0.0, que en el umbral de rechazo significa "no rechazar
+     * nunca": el silencio mas caro posible.
+     */
+    private function umbral(?Brand $brand, string $clave, float $porOmision): float
+    {
+        $valor = $brand?->setting($clave);
+
+        if ($valor === null || $valor === '' || ! is_numeric($valor)) {
+            if ($valor !== null && $valor !== '') {
+                Log::warning('umbral no numerico, se usa el del sistema', [
+                    'brand_id' => $brand?->id,
+                    'clave' => $clave,
+                    'valor' => $valor,
+                ]);
+            }
+
+            return $porOmision;
+        }
+
+        $numero = (float) $valor;
+
+        // Fuera de 0-100 no hay puntaje posible: un umbral de 150 rechazaria
+        // hasta la pieza impecable.
+        if ($numero < 0.0 || $numero > 100.0) {
+            Log::warning('umbral fuera del rango 0-100, se usa el del sistema', [
+                'brand_id' => $brand?->id,
+                'clave' => $clave,
+                'valor' => $numero,
+            ]);
+
+            return $porOmision;
+        }
+
+        return $numero;
+    }
+
     private function pesosDeclarados(?Brand $brand): ?array
     {
         $valor = $brand?->setting('scoring_weights');

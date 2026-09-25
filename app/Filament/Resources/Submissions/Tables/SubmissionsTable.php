@@ -58,6 +58,11 @@ class SubmissionsTable
                     ->searchable()
                     ->preload(),
 
+                SelectFilter::make('user_id')
+                    ->label('Diseñador')
+                    ->options(fn (): array => Submission::cargadores())
+                    ->searchable(),
+
                 SelectFilter::make('channel')
                     ->label('Canal')
                     ->options(fn (): array => collect(config('channels.presets', []))

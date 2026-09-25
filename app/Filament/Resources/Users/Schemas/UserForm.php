@@ -6,12 +6,14 @@ namespace App\Filament\Resources\Users\Schemas;
 
 use App\Models\Brand;
 use App\Models\User;
+use Closure;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 
 class UserForm
 {
@@ -71,7 +73,35 @@ class UserForm
                          * solo la obedece.
                          */
                         ->visible(fn (): bool => auth()->user()?->can('assignRoles', User::class) === true)
-                        ->helperText('super_admin y auditor ven todas las marcas sin pasar por equipos.'),
+                        /*
+                         * Se valida en el servidor y no solo se deshabilita la
+                         * opcion en pantalla: esconder un control no es
+                         * impedirlo, y esta combinacion abre todos los
+                         * clientes.
+                         */
+                        ->rule(static fn (): Closure => static function (
+                            string $attribute,
+                            mixed $value,
+                            Closure $fail
+                        ): void {
+                            $ids = array_filter(array_map('intval', (array) $value));
+
+                            if (count($ids) < 2) {
+                                return;
+                            }
+
+                            $auditor = Role::query()->where('name', 'auditor')->value('id');
+
+                            if ($auditor !== null && in_array((int) $auditor, $ids, true)) {
+                                $fail(
+                                    'El rol auditor no se combina con otros. Da acceso a todos los '
+                                    .'clientes sin pasar por equipos, y sumarlo a un rol que actua le '
+                                    .'traslada ese alcance: auditor mas reviewer podria anular '
+                                    .'veredictos de cualquier cliente.'
+                                );
+                            }
+                        })
+                        ->helperText('super_admin y auditor ven todas las marcas sin pasar por equipos. auditor va solo: no se combina con otros roles.'),
 
                     Select::make('teams')
                         ->label('Equipos')

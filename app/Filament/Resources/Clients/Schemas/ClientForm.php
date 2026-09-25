@@ -66,9 +66,10 @@ class ClientForm
                          * suelto y escribirla mal la vuelve inservible.
                          */
                         ->helperText(
-                            'Solo se leen estas tres claves. '
+                            'Solo se leen estas cuatro claves. '
                             .'contrast_threshold: numero, 4.5 por omision (WCAG AA). '
                             .'observation_threshold: numero, 90 por omision. '
+                            .'rejection_threshold: numero, 50 por omision. Bajo ese puntaje la pieza se rechaza aunque no haya bloqueantes. '
                             .'scoring_weights: JSON, por omision {"blocking":0,"major":15,"minor":5,"info":0}. '
                             .'Cualquier otra clave se guarda pero el sistema no la usa.'
                         ),

@@ -10,6 +10,8 @@ use App\Jobs\RunValidation;
 use App\Models\Asset;
 use App\Models\Brand;
 use App\Models\HumanReview;
+use App\Models\Submission;
+
 use App\Models\ValidationRun;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -34,7 +36,7 @@ class AssetsTable
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
                 ->with([
                     'brand.client',
-                    'submission',
+                    'submission.user',
                     'latestRun.verdict',
                     'latestRun.findings',
                     'latestRun.humanReviews',
@@ -63,6 +65,16 @@ class AssetsTable
                     ->label('Marca')
                     ->sortable()
                     ->description(fn (Asset $r): string => $r->brand?->client?->name ?? ''),
+
+                // No es ordenable: el nombre vive en la carga, dos saltos de
+                // relacion mas alla, y ordenar por ahi obliga a un join que
+                // encarece cada pagina. Para agrupar por persona esta el
+                // filtro, que hace el mismo trabajo y cuesta una consulta.
+                TextColumn::make('disenador')
+                    ->label('Diseñador')
+                    ->state(fn (Asset $r): string => $r->submission?->user?->name ?? '—')
+                    ->description(fn (Asset $r): ?string => $r->submission?->campaign)
+                    ->toggleable(),
 
                 TextColumn::make('veredicto')
                     ->label('Veredicto')
@@ -155,6 +167,23 @@ class AssetsTable
                         return $query->whereHas(
                             'latestRun.verdict',
                             fn (Builder $q): Builder => $q->where('status', $data['value'])
+                        );
+                    }),
+
+                // El nombre esta en la carga, no en la pieza, asi que se
+                // filtra por existencia sobre esa relacion.
+                SelectFilter::make('disenador')
+                    ->label('Diseñador')
+                    ->options(fn (): array => Submission::cargadores())
+                    ->searchable()
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (blank($data['value'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->whereHas(
+                            'submission',
+                            fn (Builder $q): Builder => $q->where('user_id', $data['value'])
                         );
                     }),
 

@@ -66,7 +66,7 @@ class BrandForm
                         // escriba aqui gana sobre lo heredado; lo que se deje
                         // fuera se sigue heredando.
                         ->helperText(
-                            'Mismas claves que en el cliente: contrast_threshold, observation_threshold '
+                            'Mismas claves que en el cliente: contrast_threshold, observation_threshold, rejection_threshold '
                             .'y scoring_weights. Lo que definas aqui gana sobre lo heredado; '
                             .'lo que dejes fuera se sigue heredando del cliente.'
                         ),
