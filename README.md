@@ -53,6 +53,14 @@ Para los datos de demostración hay que definir `DEMO_ADMIN_EMAIL` y `DEMO_ADMIN
 | `php artisan archivos:privatizar [--aplicar]` | Mueve archivos antiguos del disco público al privado |
 | `php artisan respaldo:probar` | Restaura el último respaldo en una base temporal y lo verifica |
 
+## Consumo de IA
+
+En el panel: **Operación → Consumo de IA** (permiso `audit.view`; cada usuario ve solo sus clientes). Muestra, por cliente y periodo, las validaciones con IA, los tokens y el costo, con el desglose por marca y por modelo. Se puede exportar a CSV.
+
+- **Tokens:** exactos. Son los que devuelve la API en cada respuesta.
+- **Costo:** tokens × tarifa pública de `config/ai.php`. Es exacto si la cuenta no tiene descuentos; la fuente oficial es la factura de Anthropic.
+- No incluye las ejecuciones simuladas. Si un modelo no tiene tarifa, sus tokens se cuentan y su costo figura como "sin tarifa", no como cero.
+
 ## API v1 (plugin de Figma)
 
 Autenticación: `Authorization: Bearer <token>`. El token se obtiene con `POST /api/v1/login` o en *Mis tokens*. Vence a los 30 días y deja de funcionar si el usuario se desactiva.

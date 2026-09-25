@@ -61,6 +61,7 @@ class AuditLogResource extends Resource
         'review.recorded' => 'Revision humana',
         'token.created' => 'Token creado',
         'token.revoked' => 'Token revocado',
+        'consumo.exported' => 'Consumo exportado',
     ];
 
     public static function canAccess(): bool

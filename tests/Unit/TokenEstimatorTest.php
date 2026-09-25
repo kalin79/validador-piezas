@@ -47,8 +47,8 @@ class TokenEstimatorTest extends TestCase
 
     public function test_calcula_el_costo_segun_la_tarifa_del_modelo(): void
     {
-        $this->assertEqualsWithDelta(3.0, TokenEstimator::costUsd('claude-sonnet-5', 1_000_000, 0), 0.0001);
-        $this->assertEqualsWithDelta(15.0, TokenEstimator::costUsd('claude-sonnet-5', 0, 1_000_000), 0.0001);
+        $this->assertEqualsWithDelta(2.0, TokenEstimator::costUsd('claude-sonnet-5', 1_000_000, 0), 0.0001);
+        $this->assertEqualsWithDelta(10.0, TokenEstimator::costUsd('claude-sonnet-5', 0, 1_000_000), 0.0001);
     }
 
     public function test_un_modelo_desconocido_no_rompe_el_calculo(): void

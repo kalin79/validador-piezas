@@ -50,10 +50,21 @@ return [
      | Se listan los precios de tarifa, no los promocionales: es preferible
      | que el costo estimado sobrepase al real y no al reves.
      */
+    /*
+     | Tarifa publica por millon de tokens (USD), sin descuentos de lote ni
+     | cache. Verificada contra https://platform.claude.com/docs/en/about-claude/pricing
+     | el 2026-09-25. Si Anthropic cambia precios, se actualiza aqui y la fecha.
+     |
+     | Antes Sonnet 5 figuraba a 3/15: todos los costos registrados con ese
+     | modelo quedaron sobreestimados en 50%. El reporte de consumo recalcula
+     | con esta tabla a partir de los tokens reales.
+     */
+    'pricing_verified_at' => '2026-09-25',
+
     'pricing' => [
         'claude-fable-5' => ['input' => 10.00, 'output' => 50.00],
         'claude-opus-5' => ['input' => 5.00, 'output' => 25.00],
-        'claude-sonnet-5' => ['input' => 3.00, 'output' => 15.00],
+        'claude-sonnet-5' => ['input' => 2.00, 'output' => 10.00],
         'claude-haiku-4-5-20251001' => ['input' => 1.00, 'output' => 5.00],
     ],
 
