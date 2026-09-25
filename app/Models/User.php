@@ -52,7 +52,7 @@ class User extends Authenticatable implements FilamentUser
 
     public function teams(): BelongsToMany
     {
-        return $this->belongsToMany(Team::class)->withTimestamps();
+        return $this->belongsToMany(Team::class)->using(\App\Models\Pivots\AccesoDeEquipo::class)->withTimestamps();
     }
 
     public function activeBrand(): BelongsTo

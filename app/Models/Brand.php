@@ -19,6 +19,21 @@ class Brand extends Model
     protected $guarded = [];
 
     /**
+     * Mudar una marca de cliente cambia quien la ve y que reglas hereda.
+     */
+    protected static function booted(): void
+    {
+        static::updated(static function (self $brand): void {
+            if ($brand->wasChanged('client_id')) {
+                app(\App\Services\AuditLogger::class)->log('brand.moved', $brand,
+                    oldValues: ['client_id' => $brand->getOriginal('client_id')],
+                    newValues: ['client_id' => $brand->client_id],
+                );
+            }
+        });
+    }
+
+    /**
      * Una marca casi nunca se muestra ni se evalua sin su cliente: fullName()
      * lo necesita para la etiqueta y setting() para resolver la herencia de
      * configuracion. Cargarlo siempre evita N+1 y las violaciones de lazy
@@ -60,7 +75,7 @@ class Brand extends Model
 
     public function teams(): BelongsToMany
     {
-        return $this->belongsToMany(Team::class, 'team_brand_access')->withTimestamps();
+        return $this->belongsToMany(Team::class, 'team_brand_access')->using(\App\Models\Pivots\AccesoDeEquipo::class)->withTimestamps();
     }
 
     /**

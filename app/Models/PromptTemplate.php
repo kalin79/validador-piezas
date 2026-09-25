@@ -14,6 +14,36 @@ class PromptTemplate extends Model
 {
     use HasFactory;
 
+
+    /**
+     * Una plantilla publicada o retirada es evidencia: las ejecuciones guardan
+     * su id y ese id tiene que seguir significando el mismo texto. Solo puede
+     * cambiar de estado (publicar, retirar). Para cambiar el texto se crea una
+     * version nueva.
+     */
+    protected static function booted(): void
+    {
+        static::updating(static function (self $t): void {
+            $original = RuleSetStatus::tryFrom((string) ($t->getRawOriginal('status') ?? ''));
+
+            if ($original === RuleSetStatus::Draft || $original === null) {
+                return;
+            }
+
+            $prohibidos = array_diff(array_keys($t->getDirty()), ['status', 'published_at', 'updated_at']);
+
+            if ($prohibidos !== []) {
+                throw \App\Exceptions\ImmutableRecordException::forUpdate(self::class, array_values($prohibidos));
+            }
+        });
+
+        static::deleting(static function (self $t): void {
+            if (RuleSetStatus::tryFrom((string) ($t->getRawOriginal('status') ?? '')) !== RuleSetStatus::Draft) {
+                throw \App\Exceptions\ImmutableRecordException::forDelete(self::class);
+            }
+        });
+    }
+
     protected $guarded = [];
 
     protected function casts(): array

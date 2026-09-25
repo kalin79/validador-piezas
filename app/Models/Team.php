@@ -23,16 +23,16 @@ class Team extends Model
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class)->withTimestamps();
+        return $this->belongsToMany(User::class)->using(\App\Models\Pivots\AccesoDeEquipo::class)->withTimestamps();
     }
 
     public function clients(): BelongsToMany
     {
-        return $this->belongsToMany(Client::class, 'team_client_access')->withTimestamps();
+        return $this->belongsToMany(Client::class, 'team_client_access')->using(\App\Models\Pivots\AccesoDeEquipo::class)->withTimestamps();
     }
 
     public function brands(): BelongsToMany
     {
-        return $this->belongsToMany(Brand::class, 'team_brand_access')->withTimestamps();
+        return $this->belongsToMany(Brand::class, 'team_brand_access')->using(\App\Models\Pivots\AccesoDeEquipo::class)->withTimestamps();
     }
 }

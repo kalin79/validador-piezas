@@ -181,6 +181,11 @@ class RuleSetsTable
                             return $copia;
                         });
 
+                        app(\App\Services\AuditLogger::class)->log('rule_set.version_created', $copia, newValues: [
+                            'from_rule_set_id' => $record->id,
+                            'version' => $copia->version,
+                        ], clientId: $copia->client_id !== null ? (int) $copia->client_id : null);
+
                         Notification::make()
                             ->title("Version {$copia->version} creada en borrador")
                             ->body("Se copiaron {$copia->rules()->count()} regla(s). Editala y publicala cuando este lista.")

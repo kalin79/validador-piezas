@@ -38,9 +38,9 @@ class AdminPanelProvider extends PanelProvider
                 Dashboard::class,
             ])
             ->navigationGroups([
-                NavigationGroup::make('Operacion'),
+                NavigationGroup::make('Operación'),
                 NavigationGroup::make('Base de conocimiento'),
-                NavigationGroup::make('Configuracion'),
+                NavigationGroup::make('Configuración'),
                 NavigationGroup::make('Accesos'),
             ])
             ->brandName('Validador de Piezas')

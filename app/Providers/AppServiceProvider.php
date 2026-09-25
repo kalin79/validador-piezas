@@ -71,6 +71,9 @@ class AppServiceProvider extends ServiceProvider
 
         $this->registrarPoliticas();
 
+        // Bitacora de auditoria: login, roles y accesos (ver RegistrarEnBitacora).
+        \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\RegistrarEnBitacora::class);
+
         /*
          * preventLazyLoading tambien en produccion.
          *

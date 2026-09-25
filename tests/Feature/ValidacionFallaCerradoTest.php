@@ -306,4 +306,22 @@ class ValidacionFallaCerradoTest extends TestCase
         $html2 = view('filament.modals.historial', ['asset' => $run->asset])->render();
         $this->assertNotEmpty($html2);
     }
+
+    public function test_una_respuesta_cortada_se_descarta_pero_su_costo_queda_registrado(): void
+    {
+        $this->regla('COMP-001', 'judgment', 'compliance');
+
+        $cortada = AiException::truncated('max_tokens')->conRespuesta(new VisionResponse(
+            data: [], raw: ['stop_reason' => 'max_tokens'], model: 'modelo-x',
+            inputTokens: 3000, outputTokens: 4096, costUsd: 0.0704, stopReason: 'max_tokens',
+        ));
+
+        $run = $this->runner($cortada)->run($this->pieza());
+
+        $this->assertSame(VerdictStatus::NotEvaluated, $this->estado($run));
+        $this->assertSame(4096, (int) $run->output_tokens);
+        $this->assertEquals(0.0704, (float) $run->cost_usd);
+        $this->assertSame('max_tokens', $run->deterministic_results['ai_stop_reason']);
+        $this->assertTrue($run->deterministic_results['ai_discarded_response']);
+    }
 }

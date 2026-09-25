@@ -6,6 +6,7 @@ namespace App\Filament\Resources\Submissions\Schemas;
 
 use App\Models\Brand;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -121,8 +122,15 @@ class SubmissionForm
                         ->panelLayout('grid')
                         ->reorderable(false)
                         ->required(fn (string $operation): bool => $operation === 'create')
+                        // Se guarda el nombre con el que el disenador subio el
+                        // archivo. Sin esto, la pieza quedaba registrada con el
+                        // nombre interno de almacenamiento y era dificil de
+                        // reconocer en el historial.
+                        ->storeFileNamesIn('archivos_nombres')
                         ->dehydrated(true)
                         ->helperText('JPG, PNG o WEBP. Hasta 20 archivos de 20 MB cada uno.'),
+
+                    Hidden::make('archivos_nombres'),
                 ]),
         ]);
     }

@@ -260,6 +260,37 @@ final class PaletteEvaluator implements Evaluator, ReportsUndetermined
         )];
     }
 
+    /**
+     * Copia de las paletas con las que se midio, por regla.
+     *
+     * La paleta es editable: sin esta copia, un veredicto de hoy se explicaria
+     * manana con colores y tolerancias que ya no son los que se usaron.
+     *
+     * @param  Collection<int, Rule>  $rules
+     * @return array<string, array<string, mixed>|null>
+     */
+    public function snapshot(Asset $asset, Collection $rules): array
+    {
+        $copia = [];
+
+        foreach ($rules as $rule) {
+            $palette = $this->paletteFor($rule, $asset);
+
+            $copia[$rule->code] = $palette === null ? null : [
+                'palette_id' => $palette->id,
+                'name' => $palette->name,
+                'colors' => $palette->colors->map(fn (PaletteColor $c): array => [
+                    'hex' => $c->hex,
+                    'name' => $c->name,
+                    'tolerance' => $c->effectiveTolerance(),
+                    'forbidden' => (bool) $c->is_forbidden,
+                ])->values()->all(),
+            ];
+        }
+
+        return $copia;
+    }
+
     private function paletteFor(Rule $rule, Asset $asset): ?Palette
     {
         if ($rule->palette_id !== null) {

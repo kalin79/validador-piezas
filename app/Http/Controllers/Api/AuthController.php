@@ -116,6 +116,9 @@ final class AuthController
 
         $token = $usuario->createToken($nombre);
 
+        // Sin sesion web, AuditLogger no conoce al usuario: se pasa como sujeto.
+        app(\App\Services\AuditLogger::class)->log('auth.api_login', $usuario, newValues: ['token_name' => $nombre, 'user_id' => $usuario->id]);
+
         $usuario->forceFill(['last_login_at' => now()])->save();
 
         return response()->json([
@@ -138,7 +141,10 @@ final class AuthController
      */
     public function logout(Request $request): JsonResponse
     {
+        $nombre = $request->user()->currentAccessToken()?->name;
         $request->user()->currentAccessToken()?->delete();
+
+        app(\App\Services\AuditLogger::class)->log('auth.api_logout', $request->user(), newValues: ['token_name' => $nombre]);
 
         return response()->json(['data' => ['message' => 'Sesion cerrada.']]);
     }

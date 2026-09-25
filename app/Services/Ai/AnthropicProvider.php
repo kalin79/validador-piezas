@@ -109,13 +109,27 @@ final class AnthropicProvider implements VisionProvider
         // Cualquier otro motivo (max_tokens sobre todo) significa que el JSON
         // de la herramienta puede estar incompleto: menos hallazgos de los
         // reales, que se leerian como una pieza mejor de lo que es.
+        $entradaParcial = (int) ($cuerpo['usage']['input_tokens'] ?? 0);
+        $salidaParcial = (int) ($cuerpo['usage']['output_tokens'] ?? 0);
+
         if ($stopReason !== 'tool_use') {
             Log::warning('Respuesta del modelo sin terminar en tool_use', [
                 'stop_reason' => $stopReason,
                 'model' => $model,
+                'output_tokens' => $salidaParcial,
             ]);
 
-            throw AiException::truncated($stopReason);
+            // Anthropic cobra lo generado aunque se descarte: se adjunta la
+            // respuesta para que el costo quede registrado.
+            throw AiException::truncated($stopReason)->conRespuesta(new VisionResponse(
+                data: [],
+                raw: $cuerpo,
+                model: (string) ($cuerpo['model'] ?? $model),
+                inputTokens: $entradaParcial,
+                outputTokens: $salidaParcial,
+                costUsd: round(TokenEstimator::costUsd($model, $entradaParcial, $salidaParcial), 6),
+                stopReason: $stopReason,
+            ));
         }
 
         $bloque = collect($cuerpo['content'] ?? [])

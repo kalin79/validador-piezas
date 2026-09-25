@@ -97,6 +97,7 @@ class MisTokens extends Page
                 ->modalSubmitActionLabel('Generar')
                 ->action(function (array $data): void {
                     $token = auth()->user()->createToken($data['nombre']);
+                    app(\App\Services\AuditLogger::class)->log('token.created', auth()->user(), newValues: ['token_name' => $data['nombre'], 'origen' => 'panel']);
 
                     $this->tokenNuevo = $token->plainTextToken;
 
@@ -127,6 +128,8 @@ class MisTokens extends Page
 
         $nombre = $token->name;
         $token->delete();
+
+        app(\App\Services\AuditLogger::class)->log('token.revoked', auth()->user(), newValues: ['token_name' => $nombre, 'origen' => 'panel']);
 
         Notification::make()
             ->title("Token '{$nombre}' revocado")

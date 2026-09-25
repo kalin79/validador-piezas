@@ -63,7 +63,13 @@ final class ValidationRunner
             $determinista = $this->engine->run($asset, $resolved, $channel, $coverage);
             $todos = $determinista['findings'];
 
+            $reglasPaleta = $resolved->deterministicRules()
+                ->filter(fn ($r): bool => $r->category === \App\Enums\RuleCategory::Palette);
+
             $meta = [
+                // Copia de las paletas usadas: la paleta es editable y el
+                // veredicto tiene que poder explicarse con la de ese momento.
+                'palettes_snapshot' => $this->copiaDePaletas($asset, $reglasPaleta),
                 'evaluated_rules' => $resolved->deterministicRules()->count(),
                 'deterministic_findings' => count($determinista['findings']),
                 'evaluator_errors' => $determinista['errors'],
@@ -97,6 +103,9 @@ final class ValidationRunner
                     $meta['model_requested'] = $model;
                     $meta['ai_discarded'] = $ia['discarded'];
                     $meta['ai_user_prompt_sha256'] = hash('sha256', $ia['user_prompt']);
+                    // El texto exacto enviado: incluye activos, paleta y
+                    // hallazgos del momento, que pueden cambiar despues.
+                    $meta['ai_user_prompt'] = $ia['user_prompt'];
 
                     $actualizacion = [
                         'prompt_template_id' => $ia['template']->id,
@@ -133,6 +142,22 @@ final class ValidationRunner
                     // Un fallo de la IA no invalida el analisis determinista,
                     // pero sus reglas quedan en error: nunca como cumplidas.
                     $meta['ai_error'] = $e->getMessage();
+
+                    // Si el proveedor alcanzo a responder (y cobrar), se
+                    // registra igual: el costo real no puede desaparecer
+                    // porque la respuesta no sirvio.
+                    if ($e instanceof \App\Services\Ai\AiException && $e->respuestaParcial !== null) {
+                        $parcial = $e->respuestaParcial;
+                        $meta['ai_stop_reason'] = $parcial->stopReason;
+                        $meta['ai_discarded_response'] = true;
+                        $actualizacion = [
+                            'model_identifier' => $parcial->model,
+                            'input_tokens' => $parcial->inputTokens,
+                            'output_tokens' => $parcial->outputTokens,
+                            'cost_usd' => $parcial->costUsd,
+                            'raw_model_response' => json_encode($parcial->raw, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR),
+                        ];
+                    }
 
                     foreach ($juicio as $regla) {
                         $coverage->mark($regla->code, RuleOutcome::Error, 'AiEvaluator', 'La evaluacion con IA fallo: '.mb_substr($e->getMessage(), 0, 300));
@@ -177,6 +202,25 @@ final class ValidationRunner
         }
 
         return $run->refresh();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Rule>  $reglas
+     * @return array<string, mixed>
+     */
+    private function copiaDePaletas(Asset $asset, \Illuminate\Support\Collection $reglas): array
+    {
+        if ($reglas->isEmpty()) {
+            return [];
+        }
+
+        try {
+            return (new \App\Services\Validation\Evaluators\PaletteEvaluator())->snapshot($asset, $reglas);
+        } catch (Throwable $e) {
+            // La copia es trazabilidad, no evaluacion: si falla se registra
+            // el motivo en vez de tumbar la validacion.
+            return ['_error' => $e->getMessage()];
+        }
     }
 
     private function ai(): AiEvaluator

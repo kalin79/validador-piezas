@@ -9,6 +9,7 @@ use App\Enums\FindingReviewState;
 use App\Enums\RuleCategory;
 use App\Enums\Severity;
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Concerns\Immutable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Finding extends Model
 {
     use HasFactory;
+    use Immutable;
 
     protected $guarded = [];
 
@@ -49,5 +51,15 @@ class Finding extends Model
     public function isBlocking(): bool
     {
         return $this->severity === Severity::Blocking;
+    }
+
+    /**
+     * Evidencia de auditoria: solo cambia el resultado de la revision humana.
+     *
+     * @return array<int, string>
+     */
+    protected function mutableAttributes(): array
+    {
+        return ['review_state', 'updated_at'];
     }
 }

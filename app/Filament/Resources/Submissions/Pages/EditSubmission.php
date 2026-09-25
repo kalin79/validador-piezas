@@ -20,6 +20,9 @@ class EditSubmission extends EditRecord
     /** @var array<int, string> */
     protected array $archivos = [];
 
+    /** @var array<string, string> */
+    protected array $nombres = [];
+
     protected function getHeaderActions(): array
     {
         return [
@@ -42,6 +45,7 @@ class EditSubmission extends EditRecord
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $data['archivos'] = [];
+        $data['archivos_nombres'] = [];
 
         return $data;
     }
@@ -61,6 +65,10 @@ class EditSubmission extends EditRecord
         $this->archivos = array_values(array_filter((array) ($data['archivos'] ?? [])));
 
         unset($data['archivos']);
+
+        // ruta guardada => nombre original del archivo (ver SubmissionForm).
+        $this->nombres = array_filter((array) ($data['archivos_nombres'] ?? []), 'is_string');
+        unset($data['archivos_nombres']);
 
         return $data;
     }
@@ -94,7 +102,7 @@ class EditSubmission extends EditRecord
                     continue;
                 }
 
-                $asset = $ingestor->ingestStored($this->record, $path, $disco);
+                $asset = $ingestor->ingestStored($this->record, $path, $disco, $this->nombres[$path] ?? null);
                 RunValidation::dispatch($asset, auth()->id());
                 $creados++;
             } catch (Throwable $e) {

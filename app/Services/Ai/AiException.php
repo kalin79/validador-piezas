@@ -8,6 +8,20 @@ use RuntimeException;
 
 final class AiException extends RuntimeException
 {
+    /**
+     * Respuesta que el proveedor SI entrego (y cobro) aunque no se pueda usar,
+     * por ejemplo una salida cortada por max_tokens. Se conserva para registrar
+     * el costo real y la evidencia cruda.
+     */
+    public ?VisionResponse $respuestaParcial = null;
+
+    public function conRespuesta(VisionResponse $respuesta): self
+    {
+        $this->respuestaParcial = $respuesta;
+
+        return $this;
+    }
+
     public static function missingApiKey(): self
     {
         return new self(

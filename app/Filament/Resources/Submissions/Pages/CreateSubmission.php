@@ -18,6 +18,9 @@ class CreateSubmission extends CreateRecord
     /** @var array<int, string> */
     protected array $archivos = [];
 
+    /** @var array<string, string> */
+    protected array $nombres = [];
+
     /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
@@ -28,6 +31,10 @@ class CreateSubmission extends CreateRecord
         // convertirlo en Assets una vez que la carga ya tiene id.
         $this->archivos = (array) ($data['archivos'] ?? []);
         unset($data['archivos']);
+
+        // ruta guardada => nombre original del archivo (ver SubmissionForm).
+        $this->nombres = array_filter((array) ($data['archivos_nombres'] ?? []), 'is_string');
+        unset($data['archivos_nombres']);
 
         $data['user_id'] = auth()->id();
 
@@ -44,7 +51,7 @@ class CreateSubmission extends CreateRecord
 
         foreach ($this->archivos as $path) {
             try {
-                $asset = $ingestor->ingestStored($this->record, $path, $disco);
+                $asset = $ingestor->ingestStored($this->record, $path, $disco, $this->nombres[$path] ?? null);
                 RunValidation::dispatch($asset, auth()->id());
                 $creados++;
             } catch (Throwable $e) {

@@ -102,7 +102,7 @@ final class AssetIngestor
      * Es la ruta que usa el panel: Filament guarda el archivo al enviar el
      * formulario y aqui solo se extraen los metadatos.
      */
-    public function ingestStored(Submission $submission, string $path, ?string $disk = null): Asset
+    public function ingestStored(Submission $submission, string $path, ?string $disk = null, ?string $nombreOriginal = null): Asset
     {
         $disk ??= config('filesystems.piezas_disk', 'local');
         $storage = Storage::disk($disk);
@@ -143,7 +143,9 @@ final class AssetIngestor
         return Asset::create([
             'submission_id' => $submission->id,
             'brand_id' => $submission->brand_id,
-            'original_filename' => basename($path),
+            'original_filename' => filled($nombreOriginal)
+                ? mb_substr(basename((string) $nombreOriginal), 0, 255)
+                : basename($path),
             'storage_disk' => $disk,
             'storage_path' => $path,
             'file_hash' => $hash,

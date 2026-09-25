@@ -136,7 +136,9 @@ return [
      *
      * To enable, set to true, and then create listeners to watch these events.
      */
-    'events_enabled' => false,
+    // Activado: la asignacion de roles se registra en la bitacora
+    // (App\Listeners\RegistrarEnBitacora).
+    'events_enabled' => true,
 
     /*
      * Teams Feature.

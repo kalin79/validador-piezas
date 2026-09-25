@@ -60,6 +60,14 @@ final class Publicacion
                 'published_by' => $userId,
             ])->save();
 
+            app(\App\Services\AuditLogger::class)->log('rule_set.published', $ruleSet, newValues: [
+                'version' => $ruleSet->version,
+                'owner_type' => $ruleSet->owner_type->value,
+                'owner_id' => $ruleSet->owner_id,
+                'retired_ids' => $hermanos->where('status', RuleSetStatus::Published)->pluck('id')->values()->all(),
+                'changelog' => $ruleSet->changelog,
+            ], clientId: $ruleSet->client_id !== null ? (int) $ruleSet->client_id : null);
+
             return $retiradas;
         });
     }
@@ -95,6 +103,15 @@ final class Publicacion
                 'status' => RuleSetStatus::Published->value,
                 'published_at' => now(),
             ])->save();
+
+            app(\App\Services\AuditLogger::class)->log('prompt_template.published', $template, newValues: [
+                'key' => $template->key,
+                'version' => $template->version,
+                'alcance' => $template->alcance(),
+                'system_prompt_sha256' => hash('sha256', (string) $template->system_prompt),
+                'user_prompt_sha256' => hash('sha256', (string) $template->user_prompt_template),
+                'retired_ids' => $hermanas->where('status', RuleSetStatus::Published)->pluck('id')->values()->all(),
+            ]);
 
             return $retiradas;
         });

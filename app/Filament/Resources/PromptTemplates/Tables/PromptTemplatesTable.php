@@ -118,6 +118,8 @@ class PromptTemplatesTable
                             'status' => RuleSetStatus::Draft->value,
                         ]);
 
+                        app(\App\Services\AuditLogger::class)->log('prompt_template.version_created', $record, newValues: ['from_id' => $record->id, 'version' => $siguiente]);
+
                         Notification::make()
                             ->title("Borrador v{$siguiente} creado")
                             ->body('Editalo y publicalo cuando este listo.')

@@ -20,6 +20,28 @@ class RuleSet extends Model
 
     protected $guarded = [];
 
+
+    /**
+     * Un conjunto publicado o retirado solo cambia de estado. Antes esto lo
+     * garantizaba la interfaz ocultando botones.
+     */
+    protected static function booted(): void
+    {
+        static::updating(static function (self $rs): void {
+            $original = \App\Enums\RuleSetStatus::tryFrom((string) ($rs->getRawOriginal('status') ?? ''));
+
+            if ($original === \App\Enums\RuleSetStatus::Draft || $original === null) {
+                return;
+            }
+
+            $prohibidos = array_diff(array_keys($rs->getDirty()), ['status', 'published_at', 'published_by', 'updated_at']);
+
+            if ($prohibidos !== []) {
+                throw \App\Exceptions\ImmutableRecordException::forUpdate(self::class, array_values($prohibidos));
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

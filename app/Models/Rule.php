@@ -18,6 +18,35 @@ class Rule extends Model
 
     protected $guarded = [];
 
+
+    /**
+     * Las reglas de un conjunto publicado o retirado no se editan ni se
+     * borran: las validaciones historicas las citan. Antes solo lo impedia la
+     * interfaz; un script o tinker podia cambiarlas.
+     *
+     * Crear reglas en un conjunto publicado sigue permitido para seeders, que
+     * arman el conjunto y sus reglas en el mismo paso.
+     */
+    protected static function booted(): void
+    {
+        $guarda = static function (self $rule, string $accion): void {
+            $estado = RuleSet::query()->whereKey($rule->getRawOriginal('rule_set_id') ?? $rule->rule_set_id)->value('status');
+            $estado = $estado instanceof \App\Enums\RuleSetStatus ? $estado : \App\Enums\RuleSetStatus::tryFrom((string) $estado);
+
+            if ($estado !== null && $estado !== \App\Enums\RuleSetStatus::Draft) {
+                throw new \App\Exceptions\ImmutableRecordException(sprintf(
+                    'La regla %s pertenece a un conjunto %s y no se puede %s. Crea una version nueva del conjunto.',
+                    $rule->code,
+                    $estado->label(),
+                    $accion,
+                ));
+            }
+        };
+
+        static::updating(static fn (self $r) => $guarda($r, 'modificar'));
+        static::deleting(static fn (self $r) => $guarda($r, 'eliminar'));
+    }
+
     protected function casts(): array
     {
         return [

@@ -138,7 +138,7 @@ final class ReviewRecorder
                 ];
             }
 
-            return HumanReview::create([
+            $revision = HumanReview::create([
                 'validation_run_id' => $run->id,
                 'reviewer_id' => $reviewerId,
                 'machine_verdict' => $veredictoMaquina->value,
@@ -146,6 +146,16 @@ final class ReviewRecorder
                 'justification' => $justificacion,
                 'finding_decisions' => $registro,
             ]);
+
+            app(\App\Services\AuditLogger::class)->log('review.recorded', $run, newValues: [
+                'human_review_id' => $revision->id,
+                'machine_verdict' => $veredictoMaquina->value,
+                'final_verdict' => $veredictoFinal->value,
+                'overrode_machine' => $veredictoMaquina !== $veredictoFinal,
+                'justification' => $justificacion,
+            ]);
+
+            return $revision;
         });
     }
 }
