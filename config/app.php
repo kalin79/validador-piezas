@@ -65,7 +65,11 @@ return [
     |
     */
 
+    // La base guarda en UTC: no cambiar. Lo que ve el usuario usa
+    // display_timezone (ver App\Support\Fecha y FilamentTimezone).
     'timezone' => 'UTC',
+
+    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'America/Lima'),
 
     /*
     |--------------------------------------------------------------------------
@@ -78,11 +82,11 @@ return [
     |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    'locale' => env('APP_LOCALE', 'es'),
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
-    'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
+    'faker_locale' => env('APP_FAKER_LOCALE', 'es_PE'),
 
     /*
     |--------------------------------------------------------------------------

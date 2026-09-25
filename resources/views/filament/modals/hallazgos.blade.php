@@ -255,7 +255,7 @@
                 @if ($run->model_identifier)
                     <br>Modelo: {{ $run->model_identifier }}
                 @endif
-                <br>{{ $run->created_at?->format('d/m/Y H:i') }}
+                <br>{{ \App\Support\Fecha::local($run->created_at)?->format('d/m/Y H:i') }}
             @endif
         </div>
 

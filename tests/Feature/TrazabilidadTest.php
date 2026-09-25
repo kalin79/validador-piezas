@@ -227,4 +227,15 @@ class TrazabilidadTest extends TestCase
         $this->assertContains($respuesta->status(), [302, 403]);
         $this->assertFalse(\App\Filament\Resources\AuditLogs\AuditLogResource::canAccess());
     }
+
+    public function test_el_diagnostico_por_consola_lee_una_validacion(): void
+    {
+        $run = $this->ejecucionConEvidencia();
+
+        $this->artisan('validacion:diagnostico', ['id' => $run->id])
+            ->expectsOutputToContain('Ejecucion '.$run->id)
+            ->assertSuccessful();
+
+        $this->artisan('validacion:diagnostico', ['id' => 999999])->assertFailed();
+    }
 }

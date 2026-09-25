@@ -47,7 +47,7 @@ final class DuplicateEvaluator implements Evaluator
             description: sprintf(
                 'Esta pieza ya se habia cargado %s para esta marca. La primera coincidencia es del %s.',
                 $previos->count() === 1 ? 'una vez' : $previos->count().' veces',
-                $primero->created_at?->format('d/m/Y') ?? 'fecha desconocida',
+                \App\Support\Fecha::local($primero->created_at)?->format('d/m/Y') ?? 'fecha desconocida',
             ),
             evidence: 'SHA-256 '.substr($asset->file_hash, 0, 16).'...',
             evidenceData: [

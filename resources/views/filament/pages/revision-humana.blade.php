@@ -27,7 +27,7 @@
             'marca' => $r->brand?->name ?? '',
             'veredicto' => $r->verdict?->status->label() ?? '',
             'color' => $coloresVeredicto[$r->verdict?->status->color() ?? ''] ?? '#64748b',
-            'fecha' => $r->created_at?->format('d/m H:i'),
+            'fecha' => \App\Support\Fecha::local($r->created_at)?->format('d/m H:i'),
             'activo' => $r->public_id === $this->runId,
         ];
     }

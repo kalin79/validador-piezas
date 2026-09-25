@@ -59,6 +59,25 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Destino externo de los respaldos (S3 o compatible: Backblaze B2,
+         * Cloudflare R2, DigitalOcean Spaces). Un respaldo en el mismo
+         * servidor se pierde con el mismo incidente. Se activa con
+         * BACKUP_DISK=respaldos. Ver docs/DESPLIEGUE.md.
+         */
+        'respaldos' => [
+            'driver' => 's3',
+            'key' => env('RESPALDOS_KEY'),
+            'secret' => env('RESPALDOS_SECRET'),
+            'region' => env('RESPALDOS_REGION', 'us-east-1'),
+            'bucket' => env('RESPALDOS_BUCKET'),
+            'endpoint' => env('RESPALDOS_ENDPOINT'),
+            'use_path_style_endpoint' => (bool) env('RESPALDOS_PATH_STYLE', false),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

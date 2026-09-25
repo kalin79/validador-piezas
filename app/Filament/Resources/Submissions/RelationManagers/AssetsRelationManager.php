@@ -125,7 +125,7 @@ class AssetsRelationManager extends RelationManager
                 // una pieza revalidada hace un minuto, que es peor que no tenerla.
                 TextColumn::make('ultima_validacion')
                     ->label('Ultima validacion')
-                    ->state(fn (Asset $record): string => $record->latestRun?->created_at?->format('d/m/Y H:i') ?? '—')
+                    ->state(fn (Asset $record): string => \App\Support\Fecha::local($record->latestRun?->created_at)?->format('d/m/Y H:i') ?? '—')
                     ->description(fn (Asset $record): string => self::descripcionUltimaValidacion($record))
                     // Ordena por la fecha de la ultima ejecucion con una
                     // subconsulta correlacionada: no hay columna que ordenar.

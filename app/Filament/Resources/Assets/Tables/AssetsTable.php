@@ -125,7 +125,7 @@ class AssetsTable
 
                 TextColumn::make('ultima_validacion')
                     ->label('Ultima validacion')
-                    ->state(fn (Asset $r): string => $r->latestRun?->created_at?->format('d/m/Y H:i') ?? '-')
+                    ->state(fn (Asset $r): string => \App\Support\Fecha::local($r->latestRun?->created_at)?->format('d/m/Y H:i') ?? '-')
                     ->description(fn (Asset $r): string => ($n = (int) ($r->validation_runs_count ?? 0)) > 1
                         ? ($n - 1).' revalidacion'.($n > 2 ? 'es' : '')
                         : 'al cargar')

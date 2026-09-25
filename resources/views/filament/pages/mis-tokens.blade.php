@@ -48,7 +48,7 @@
                 @foreach ($this->tokens as $token)
                     <tr>
                         <td><strong>{{ $token->nombre }}</strong></td>
-                        <td>{{ $token->creado?->format('d/m/Y H:i') }}</td>
+                        <td>{{ \App\Support\Fecha::local($token->creado)?->format('d/m/Y H:i') }}</td>
                         <td>
                             @if ($token->nuncaUsado)
                                 <span class="tk-nunca">nunca usado</span>

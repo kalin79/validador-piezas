@@ -3,7 +3,7 @@
 @endphp
 <div style="display:grid; gap:.75rem; font-size:.8125rem">
     <div><strong>{{ \App\Filament\Resources\AuditLogs\AuditLogResource::ACCIONES[$log->action] ?? $log->action }}</strong>
-        · {{ $log->created_at?->format('d/m/Y H:i:s') }} · {{ $log->user_email ?? 'sistema' }} · IP {{ $log->ip_address ?? '—' }}</div>
+        · {{ \App\Support\Fecha::local($log->created_at)?->format('d/m/Y H:i:s') }} · {{ $log->user_email ?? 'sistema' }} · IP {{ $log->ip_address ?? '—' }}</div>
     @if ($log->auditable_type)
         <div style="opacity:.7">{{ $log->auditable_type }} #{{ $log->auditable_id }}</div>
     @endif

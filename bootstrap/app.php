@@ -13,6 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->append(\App\Http\Middleware\CabecerasDeSeguridad::class);
+
         // La API responde 401 en JSON; lo demas va al login del panel. Antes
         // devolvia null en los dos casos y cualquier ruta web con 'auth'
         // terminaba en error 500 (no existe una ruta llamada 'login').

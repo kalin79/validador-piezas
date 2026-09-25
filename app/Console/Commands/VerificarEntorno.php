@@ -51,6 +51,9 @@ class VerificarEntorno extends Command
         $this->seccion('Salida a internet');
         $this->red();
 
+        $this->seccion('Configuracion de la aplicacion');
+        $this->configuracion();
+
         $this->seccion('RESUMEN');
 
         $this->line('  criticos:    '.$this->criticos);
@@ -239,8 +242,10 @@ class VerificarEntorno extends Command
 
             $this->comprobar('conexion a la base', true, $version);
 
-            $esMysql = str_contains(strtolower((string) $version), 'mysql')
-                || str_contains(strtolower((string) $version), 'mariadb');
+            // Se decide por el driver, no por el texto de la version: MySQL 8
+            // responde solo "8.0.33", sin la palabra "mysql", y el control
+            // avisaba en falso.
+            $esMysql = in_array(DB::getDriverName(), ['mysql', 'mariadb'], true);
 
             $this->comprobar(
                 'motor MySQL o MariaDB',
@@ -284,6 +289,62 @@ class VerificarEntorno extends Command
                     .'Detalle: '.mb_substr($e->getMessage(), 0, 120),
                 critico: true,
             );
+        }
+    }
+
+    /**
+     * Ajustes que la auditoria de 2026-09 encontro mal puestos o que, mal
+     * puestos, rompen la veracidad o la seguridad del sistema.
+     */
+    private function configuracion(): void
+    {
+        $produccion = app()->isProduction();
+
+        if (! $produccion) {
+            $this->linea('  Entorno '.config('app.env').': debug, cookie HTTPS, cola y correo solo se exigen en produccion.');
+        }
+
+        $this->comprobar('APP_DEBUG apagado en produccion', ! ($produccion && config('app.debug')),
+            'APP_ENV='.config('app.env').' APP_DEBUG='.(config('app.debug') ? 'true' : 'false'), 'Con debug activo, un error muestra rutas, SQL y variables de entorno a quien lo provoque.', critico: true);
+
+        $this->comprobar('Piezas en disco privado', config('filesystems.piezas_disk') !== 'public',
+            'PIEZAS_DISK='.config('filesystems.piezas_disk'), 'En "public" las piezas se sirven sin sesion por /storage.', critico: true);
+
+        $driver = (string) config('ai.driver');
+        $this->comprobar('Driver de IA real', ! ($produccion && $driver === 'fake'),
+            'AI_DRIVER='.$driver, 'El driver simulado inventa resultados; en produccion el sistema lo rechaza.', critico: true);
+
+        $this->comprobar('Clave de Anthropic presente', $driver !== 'anthropic' || filled(config('ai.anthropic.api_key')),
+            '', 'Sin ANTHROPIC_API_KEY las reglas de juicio quedan sin evaluar en todas las piezas.', critico: $produccion);
+
+        $this->comprobar('Cola asincrona', ! ($produccion && config('queue.default') === 'sync'),
+            'QUEUE_CONNECTION='.config('queue.default'), 'Con sync, cada validacion corre dentro de la peticion web y puede cortarse por tiempo.');
+
+        $retry = (int) config('queue.connections.'.config('queue.default').'.retry_after', 0);
+        $this->comprobar('retry_after mayor que el timeout del job (420 s)', config('queue.default') === 'sync' || $retry > 420,
+            'retry_after='.$retry, 'Si es menor, un segundo worker toma la misma validacion y se cobra dos veces.');
+
+        $this->comprobar('Tokens de API con vencimiento', config('sanctum.expiration') !== null,
+            '', 'Sin vencimiento, un token filtrado sirve para siempre.');
+
+        $this->comprobar('Cookie de sesion solo por HTTPS', ! $produccion || (bool) config('session.secure'),
+            '', 'Sin esto la cookie de sesion puede viajar sin cifrar.');
+
+        $this->comprobar('Idioma espanol', str_starts_with((string) config('app.locale'), 'es'),
+            'APP_LOCALE='.config('app.locale'), 'El panel y los mensajes de validacion salen en ingles.');
+
+        $this->comprobar('Logs rotados por dia', ! in_array('single', (array) config('logging.channels.stack.channels'), true),
+            'LOG_STACK='.implode(',', (array) config('logging.channels.stack.channels')), 'Con "single" el log crece sin limite.');
+
+        $this->comprobar('Correo real configurado', ! ($produccion && in_array(config('mail.default'), ['log', 'array'], true)),
+            'MAIL_MAILER='.config('mail.default'), 'Las alertas de respaldo y avisos por correo no salen del servidor.');
+
+        if (config('backup.enabled')) {
+            $this->comprobar('Destinatario de alertas de respaldo', filled(config('backup.notifications.mail.to')),
+                '', 'Define BACKUP_NOTIFY_EMAIL: si el respaldo falla, nadie se entera.');
+
+            $this->comprobar('Respaldo fuera del servidor', in_array('respaldos', (array) config('backup.backup.destination.disks'), true),
+                '', 'BACKUP_DISK=respaldos. Un respaldo en el mismo servidor se pierde con el mismo incidente.');
         }
     }
 

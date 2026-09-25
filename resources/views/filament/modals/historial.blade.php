@@ -106,7 +106,7 @@
         }
 
         $filas[] = [
-            'fecha' => $run->created_at?->format('d/m/Y'),
+            'fecha' => \App\Support\Fecha::local($run->created_at)?->format('d/m/Y'),
             'hora' => $run->created_at?->format('H:i:s'),
             'veredicto' => $v?->status->label() ?? 'Sin veredicto',
             'color' => $coloresVeredicto[$v?->status->color() ?? 'gray'] ?? '#6b7280',

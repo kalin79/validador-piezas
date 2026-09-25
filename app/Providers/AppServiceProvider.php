@@ -71,6 +71,9 @@ class AppServiceProvider extends ServiceProvider
 
         $this->registrarPoliticas();
 
+        // Horas del panel en la zona del usuario; la base sigue en UTC.
+        \Filament\Support\Facades\FilamentTimezone::set(\App\Support\Fecha::zona());
+
         // Bitacora de auditoria: login, roles y accesos (ver RegistrarEnBitacora).
         \Illuminate\Support\Facades\Event::subscribe(\App\Listeners\RegistrarEnBitacora::class);
 
