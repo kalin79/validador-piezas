@@ -10,6 +10,7 @@ use App\Enums\Severity;
 use App\Enums\ValidationStatus;
 use App\Enums\VerdictStatus;
 use App\Models\ValidationRun;
+use App\Models\Verdict;
 use App\Services\Review\ReviewRecorder;
 use BackedEnum;
 use Filament\Notifications\Notification;
@@ -46,6 +47,13 @@ class RevisionHumana extends Page
 
     public ?string $runId = null;
 
+    public const LIMITE = 60;
+
+    /** 'todas' | 'requiere' */
+    public string $filtro = 'todas';
+
+    public string $buscar = '';
+
     /** @var array<int, string> */
     public array $decisiones = [];
 
@@ -66,7 +74,8 @@ class RevisionHumana extends Page
 
     public static function getNavigationBadge(): ?string
     {
-        $n = self::colaQuery()->count();
+        // El numero cuenta lo que bloquea envios al director.
+        $n = self::colaQuery(true)->count();
 
         return $n > 0 ? (string) $n : null;
     }
@@ -79,24 +88,55 @@ class RevisionHumana extends Page
     /**
      * Ejecuciones completadas, con veredicto y sin revisar, de las marcas que
      * el usuario puede ver.
+     *
+     * Solo la ULTIMA ejecucion de cada pieza. Cada revalidacion crea una
+     * ejecucion nueva y las anteriores quedaban en la cola para siempre:
+     * revisarlas no sirve para nada (el envio al director mira la ultima) y
+     * con el limite de 40, ordenadas de la mas antigua, tapaban las nuevas.
      */
-    protected static function colaQuery()
+    protected static function colaQuery(bool $soloRequierenRevision = false)
     {
         return ValidationRun::query()
             ->whereIn('brand_id', auth()->user()->accessibleBrandIds())
             ->where('status', ValidationStatus::Completed->value)
-            ->whereHas('verdict')
-            ->whereDoesntHave('humanReviews');
+            ->whereHas('verdict', fn ($q) => $soloRequierenRevision
+                ? $q->where('status', VerdictStatus::RequiresReview->value)
+                : $q)
+            ->whereDoesntHave('humanReviews')
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')
+                ->from('validation_runs as posterior')
+                ->whereColumn('posterior.asset_id', 'validation_runs.asset_id')
+                ->whereColumn('posterior.id', '>', 'validation_runs.id'));
     }
 
-    /** @return Collection<int, ValidationRun> */
+    /**
+     * Primero lo que bloquea un envio (requiere revision), luego lo mas
+     * reciente. Con filtro por nombre de archivo para ir directo a una pieza.
+     *
+     * @return Collection<int, ValidationRun>
+     */
     public function getColaProperty(): Collection
     {
-        return self::colaQuery()
+        return self::colaQuery($this->filtro === 'requiere')
+            ->when(filled($this->buscar), fn ($q) => $q->whereHas(
+                'asset',
+                fn ($a) => $a->where('original_filename', 'like', '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($this->buscar)).'%')
+            ))
             ->with(['asset', 'brand', 'verdict'])
-            ->orderBy('created_at')
-            ->limit(40)
+            ->orderByDesc(
+                Verdict::query()
+                    ->selectRaw("CASE WHEN status = 'requires_review' THEN 1 ELSE 0 END")
+                    ->whereColumn('verdicts.validation_run_id', 'validation_runs.id')
+                    ->limit(1)
+            )
+            ->orderByDesc('id')
+            ->limit(self::LIMITE)
             ->get();
+    }
+
+    public function getTotalColaProperty(): int
+    {
+        return self::colaQuery($this->filtro === 'requiere')->count();
     }
 
     public function getRunProperty(): ?ValidationRun
@@ -126,6 +166,14 @@ class RevisionHumana extends Page
         return collect(Severity::cases())
             ->mapWithKeys(fn (Severity $s): array => [$s->value => $s->label()])
             ->all();
+    }
+
+    /** Permite llegar con ?run=<id> desde la carga de la pieza. */
+    public function mount(): void
+    {
+        if (is_string($id = request()->query('run')) && $id !== '') {
+            $this->abrir($id);
+        }
     }
 
     public function abrir(string $publicId): void

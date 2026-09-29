@@ -96,6 +96,13 @@
         .rv-tit { font-size: .75rem; font-weight: 600; text-transform: uppercase;
                   letter-spacing: .06em; opacity: .5; margin-bottom: .75rem; }
 
+        .rv-filtros { display: flex; gap: .375rem; margin-bottom: .5rem; }
+        .rv-chip { font-size: .6875rem; font-weight: 600; padding: .25rem .625rem; border-radius: 1rem;
+                   border: 1px solid rgba(128,128,128,.25); opacity: .7; cursor: pointer; }
+        .rv-chip-on { opacity: 1; background: #111827; color: #fff; border-color: #111827; }
+        .dark .rv-chip-on { background: #fff; color: #111827; border-color: #fff; }
+        .rv-buscar { width: 100%; font-size: .75rem; padding: .4rem .6rem; border-radius: .5rem; margin-bottom: .625rem;
+                     border: 1px solid rgba(128,128,128,.25); background: transparent; color: inherit; }
         .rv-cola { display: flex; flex-direction: column; gap: .375rem; max-height: 620px; overflow-y: auto; }
         .rv-fila { display: block; width: 100%; text-align: left; padding: .625rem .75rem;
                    border: 1px solid rgba(128,128,128,.15); border-radius: .625rem;
@@ -154,12 +161,22 @@
     <div class="rv-grid">
 
         <div class="rv-card">
-            <div class="rv-tit">Pendientes ({{ count($pendientes) }})</div>
+            <div class="rv-tit">Pendientes ({{ $this->totalCola }})</div>
+
+            <div class="rv-filtros">
+                <button type="button" wire:click="$set('filtro', 'todas')" class="rv-chip {{ $this->filtro === 'todas' ? 'rv-chip-on' : '' }}">Todas</button>
+                <button type="button" wire:click="$set('filtro', 'requiere')" class="rv-chip {{ $this->filtro === 'requiere' ? 'rv-chip-on' : '' }}">Requieren revision</button>
+            </div>
+            <input type="search" wire:model.live.debounce.400ms="buscar" class="rv-buscar" placeholder="Buscar por nombre de archivo">
 
             @if (count($pendientes) === 0)
                 <div style="font-size:.8125rem; opacity:.5; line-height:1.55">
-                    No hay validaciones sin revisar. Valida una pieza y vuelve aqui.
+                    {{ filled($this->buscar) ? 'Ninguna pieza pendiente con ese nombre.' : 'No hay validaciones sin revisar. Valida una pieza y vuelve aqui.' }}
                 </div>
+            @endif
+
+            @if ($this->totalCola > count($pendientes))
+                <div class="rv-fila-s" style="margin-bottom:.5rem">Mostrando {{ count($pendientes) }} de {{ $this->totalCola }}. Usa el buscador para llegar a las demas.</div>
             @endif
 
             <div class="rv-cola">

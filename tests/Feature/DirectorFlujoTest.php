@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Enums\DirectorReviewStatus;
 use App\Enums\VerdictStatus;
 use App\Filament\Pages\BandejaDirector;
+use App\Filament\Pages\RevisionHumana;
 use App\Filament\Resources\Submissions\Pages\EditSubmission;
 use App\Filament\Resources\Submissions\RelationManagers\AssetsRelationManager;
 use App\Models\Asset;
@@ -359,5 +360,29 @@ class DirectorFlujoTest extends TestCase
             ->assertTableActionDisabled('enviar_director', $rechazada);
 
         $this->assertSame('Version final', DirectorReview::query()->where('asset_id', $asset->id)->value('sender_note'));
+    }
+
+    public function test_la_cola_de_revision_muestra_solo_la_ultima_validacion_y_prioriza_lo_que_bloquea(): void
+    {
+        $vieja = $this->pieza(VerdictStatus::RequiresReview);
+        $this->validar($vieja, VerdictStatus::Approved);           // revalidada: la primera ya no cuenta
+        $bloqueada = $this->pieza(VerdictStatus::RequiresReview);
+        $aprobada = $this->pieza(VerdictStatus::Approved);
+
+        $cola = Livewire::actingAs($this->revisor)->test(RevisionHumana::class)->instance()->cola;
+
+        $this->assertSame(3, $cola->count());
+        $this->assertSame($bloqueada->id, $cola->first()->asset_id);
+        $this->assertSame(1, $cola->where('asset_id', $vieja->id)->count());
+        $this->assertSame(VerdictStatus::Approved, $cola->firstWhere('asset_id', $vieja->id)->verdict->status);
+        $this->assertTrue($cola->contains('asset_id', $aprobada->id));
+
+        Livewire::actingAs($this->revisor)->test(RevisionHumana::class)
+            ->set('buscar', $bloqueada->original_filename)
+            ->assertSee($bloqueada->original_filename)
+            ->assertDontSee($aprobada->original_filename)
+            ->set('buscar', '')
+            ->set('filtro', 'requiere')
+            ->assertDontSee($aprobada->original_filename);
     }
 }

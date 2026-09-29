@@ -6,6 +6,8 @@ namespace App\Filament\Resources\Submissions\RelationManagers;
 
 use App\Enums\Severity;
 use App\Enums\ValidationStatus;
+use App\Enums\VerdictStatus;
+use App\Filament\Pages\RevisionHumana;
 use App\Jobs\RunValidation;
 use App\Models\Asset;
 use App\Models\ValidationRun;
@@ -222,6 +224,16 @@ class AssetsRelationManager extends RelationManager
 
                         Notification::make()->title('Enviada al director')->success()->send();
                     }),
+
+                // Atajo para el caso mas comun en que no se puede enviar: la
+                // pieza espera revision humana. Lleva directo a esa ejecucion.
+                Action::make('revisar')
+                    ->label('Revisar')
+                    ->icon('heroicon-o-clipboard-document-check')
+                    ->color('info')
+                    ->visible(fn (Asset $record): bool => $record->latestRun?->verdict?->status === VerdictStatus::RequiresReview
+                        && auth()->user()?->can('revisar', $record) === true)
+                    ->url(fn (Asset $record): string => RevisionHumana::getUrl(['run' => $record->latestRun->public_id])),
 
                 Action::make('retirar_director')
                     ->label('Retirar envio')
