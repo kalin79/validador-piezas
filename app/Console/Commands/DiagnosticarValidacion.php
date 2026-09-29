@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\ValidationRun;
+use App\Services\Ai\Proveedor;
+use App\Support\Fecha;
 use Illuminate\Console\Command;
 
 /**
@@ -43,11 +45,11 @@ class DiagnosticarValidacion extends Command
         $meta = (array) ($run->deterministic_results ?? []);
         $v = $run->verdict;
 
-        $this->line("<options=bold>Ejecucion {$run->id}</> · ".\App\Support\Fecha::local($run->created_at)?->format('d/m/Y H:i:s')
+        $this->line("<options=bold>Ejecucion {$run->id}</> · ".Fecha::local($run->created_at)?->format('d/m/Y H:i:s')
             .' · '.($run->asset?->original_filename ?? '—'));
         $this->line('Estado: '.$run->status->value.' · Veredicto: '.($v?->status->label() ?? '—')
             .' · Puntaje: '.($v?->score ?? '—').' · Formula v'.($v?->scoring_formula_snapshot['formula_version'] ?? '—'));
-        $this->line('Modelo: '.($run->model_identifier ?? '—').' · stop_reason: '.($meta['ai_stop_reason'] ?? '—')
+        $this->line('Proveedor: '.Proveedor::etiqueta($run->ai_provider).' · Modelo: '.($run->model_identifier ?? '—').' · stop_reason: '.($meta['ai_stop_reason'] ?? '—')
             .' · tokens salida: '.($run->output_tokens ?? '—').' · USD '.($run->cost_usd ?? '—'));
 
         if ($run->error_message) {
@@ -85,7 +87,14 @@ class DiagnosticarValidacion extends Command
 
         if (($reglas = (array) $this->option('regla')) !== []) {
             $raw = json_decode((string) $run->raw_model_response, true);
-            $entrada = collect($raw['content'] ?? [])->firstWhere('type', 'tool_use')['input'] ?? [];
+            // Anthropic: bloque tool_use. OpenAI: texto JSON en output[].content[].
+            $entrada = collect($raw['content'] ?? [])->firstWhere('type', 'tool_use')['input'] ?? null;
+
+            if ($entrada === null) {
+                $texto = collect($raw['output'] ?? [])->where('type', 'message')
+                    ->flatMap(fn ($m) => $m['content'] ?? [])->where('type', 'output_text')->pluck('text')->implode('');
+                $entrada = (array) (json_decode($texto, true) ?? []);
+            }
 
             $this->newLine();
             $this->line('<options=bold>Declaraciones del modelo</>');

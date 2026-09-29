@@ -99,7 +99,7 @@ class ValidationRun extends Model
     protected function writeOnceAttributes(): array
     {
         return [
-            'prompt_template_id', 'model_identifier',
+            'prompt_template_id', 'model_identifier', 'ai_provider',
             'input_tokens', 'output_tokens', 'cost_usd', 'raw_model_response',
         ];
     }

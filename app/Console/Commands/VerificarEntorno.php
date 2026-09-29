@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Services\Ai\Proveedor;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -314,8 +315,26 @@ class VerificarEntorno extends Command
         $this->comprobar('Driver de IA real', ! ($produccion && $driver === 'fake'),
             'AI_DRIVER='.$driver, 'El driver simulado inventa resultados; en produccion el sistema lo rechaza.', critico: true);
 
-        $this->comprobar('Clave de Anthropic presente', $driver !== 'anthropic' || filled(config('ai.anthropic.api_key')),
-            '', 'Sin ANTHROPIC_API_KEY las reglas de juicio quedan sin evaluar en todas las piezas.', critico: $produccion);
+        // La clave que importa es la del proveedor del modelo por defecto. La
+        // del otro solo se necesita para elegir sus modelos a mano.
+        $proveedorDefecto = Proveedor::de((string) config('ai.model'));
+        $this->comprobar('Modelo por defecto con proveedor conocido', $proveedorDefecto !== null,
+            'AI_MODEL='.config('ai.model'), 'El modelo no coincide con ningun prefijo de config/ai.php (providers).', critico: true);
+
+        $claves = ['anthropic' => 'ANTHROPIC_API_KEY', 'openai' => 'OPENAI_API_KEY'];
+
+        foreach ($claves as $prov => $variable) {
+            $esDefecto = $prov === $proveedorDefecto;
+            $this->comprobar(
+                'Clave de '.Proveedor::etiqueta($prov).($esDefecto ? ' (modelo por defecto)' : ''),
+                $driver === 'fake' || filled(config("ai.{$prov}.api_key")),
+                '',
+                $esDefecto
+                    ? "Sin {$variable} las reglas de juicio quedan sin evaluar en todas las piezas."
+                    : "Sin {$variable} fallan solo las validaciones que se pidan con un modelo de ".Proveedor::etiqueta($prov).'.',
+                critico: $produccion && $esDefecto,
+            );
+        }
 
         $this->comprobar('Cola asincrona', ! ($produccion && config('queue.default') === 'sync'),
             'QUEUE_CONNECTION='.config('queue.default'), 'Con sync, cada validacion corre dentro de la peticion web y puede cortarse por tiempo.');

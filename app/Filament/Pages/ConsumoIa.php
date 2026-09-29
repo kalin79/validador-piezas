@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Models\Client;
+use App\Services\Ai\Proveedor;
 use App\Services\AuditLogger;
 use App\Services\Consumo\ReporteDeConsumo;
 use App\Support\Alcance;
@@ -43,6 +44,9 @@ class ConsumoIa extends Page
     public ?string $hasta = null;
 
     public ?string $cliente = null;
+
+    /** '' (todos), 'anthropic' u 'openai'. */
+    public string $proveedor = '';
 
     /**
      * Mismo permiso que la bitacora: es informacion de gestion, no operativa.
@@ -103,6 +107,8 @@ class ConsumoIa extends Page
             $hasta,
             auth()->user()->accessibleBrandIds()->all(),
             $clientes,
+            // Tambien es propiedad publica: solo se aceptan los configurados.
+            array_key_exists($this->proveedor, (array) config('ai.providers', [])) ? $this->proveedor : null,
         );
     }
 
@@ -115,6 +121,7 @@ class ConsumoIa extends Page
             'desde' => $r['desde']->toDateString(),
             'hasta' => $r['hasta']->toDateString(),
             'cliente' => $this->cliente,
+            'proveedor' => $this->proveedor ?: null,
         ]);
 
         $nombre = sprintf('consumo-ia_%s_%s.csv', $r['desde']->toDateString(), $r['hasta']->toDateString());
@@ -122,25 +129,29 @@ class ConsumoIa extends Page
         return response()->streamDownload(function () use ($r): void {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF"); // BOM para que Excel lea las tildes
-            fputcsv($out, ['Cliente', 'Marca', 'Modelo', 'Validaciones con IA', 'Tokens entrada', 'Tokens salida', 'Tokens totales', 'Costo USD (tarifa vigente)', 'Costo USD registrado al validar'], ';');
+            fputcsv($out, ['Cliente', 'Marca', 'Proveedor', 'Modelo', 'Validaciones con IA', 'Tokens entrada', 'Tokens salida', 'Tokens totales', 'Costo USD (tarifa vigente)', 'Costo USD registrado al validar'], ';');
 
             foreach ($r['clientes'] as $c) {
                 foreach ($c['marcas'] as $m) {
-                    fputcsv($out, [$c['cliente'], $m['nombre'], '', $m['llamadas'], $m['entrada'], $m['salida'], $m['entrada'] + $m['salida'], $this->num($m), number_format((float) $m['registrado'], 4, ',', '')], ';');
+                    fputcsv($out, [$c['cliente'], $m['nombre'], '', '', $m['llamadas'], $m['entrada'], $m['salida'], $m['entrada'] + $m['salida'], $this->num($m), number_format((float) $m['registrado'], 4, ',', '')], ';');
                 }
 
                 foreach ($c['modelos'] as $m) {
-                    fputcsv($out, [$c['cliente'], '(todas)', $m['nombre'], $m['llamadas'], $m['entrada'], $m['salida'], $m['entrada'] + $m['salida'], $this->num($m), number_format((float) $m['registrado'], 4, ',', '')], ';');
+                    fputcsv($out, [$c['cliente'], '(todas)', Proveedor::etiqueta($m['proveedor'] === 'otro' ? null : $m['proveedor']), $m['nombre'], $m['llamadas'], $m['entrada'], $m['salida'], $m['entrada'] + $m['salida'], $this->num($m), number_format((float) $m['registrado'], 4, ',', '')], ';');
                 }
 
-                fputcsv($out, [$c['cliente'], 'TOTAL CLIENTE', '', $c['llamadas'], $c['entrada'], $c['salida'], $c['entrada'] + $c['salida'], $this->num($c), number_format((float) $c['registrado'], 4, ',', '')], ';');
+                fputcsv($out, [$c['cliente'], 'TOTAL CLIENTE', '', '', $c['llamadas'], $c['entrada'], $c['salida'], $c['entrada'] + $c['salida'], $this->num($c), number_format((float) $c['registrado'], 4, ',', '')], ';');
+            }
+
+            foreach ($r['proveedores'] as $p) {
+                fputcsv($out, ['TOTAL '.mb_strtoupper($p['nombre']), '', $p['nombre'], '', $p['llamadas'], $p['entrada'], $p['salida'], $p['entrada'] + $p['salida'], $this->num($p), number_format((float) $p['registrado'], 4, ',', '')], ';');
             }
 
             $t = $r['total'];
-            fputcsv($out, ['TOTAL', '', '', $t['llamadas'], $t['entrada'], $t['salida'], $t['entrada'] + $t['salida'], $this->num($t), number_format((float) $t['registrado'], 4, ',', '')], ';');
+            fputcsv($out, ['TOTAL', '', '', '', $t['llamadas'], $t['entrada'], $t['salida'], $t['entrada'] + $t['salida'], $this->num($t), number_format((float) $t['registrado'], 4, ',', '')], ';');
             fputcsv($out, [], ';');
             fputcsv($out, ['Periodo', $r['desde']->format('d/m/Y').' al '.$r['hasta']->format('d/m/Y').' ('.Fecha::zona().')'], ';');
-            fputcsv($out, ['Tarifa', 'Publica de Anthropic verificada el '.config('ai.pricing_verified_at').'. No incluye descuentos ni impuestos. La factura de Anthropic es la fuente oficial.'], ';');
+            fputcsv($out, ['Tarifa', 'Publica de Anthropic y OpenAI verificada el '.config('ai.pricing_verified_at').'. No incluye descuentos ni impuestos. La factura de cada proveedor es la fuente oficial.'], ';');
             fclose($out);
         }, $nombre, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }

@@ -22,12 +22,21 @@ final class AiException extends RuntimeException
         return $this;
     }
 
-    public static function missingApiKey(): self
+    public static function missingApiKey(string $variable = 'ANTHROPIC_API_KEY'): self
     {
         return new self(
-            'Falta ANTHROPIC_API_KEY en el archivo .env. '
+            "Falta {$variable} en el archivo .env. "
             .'Mientras tanto puedes usar AI_DRIVER=fake para probar el flujo sin gastar tokens.'
         );
+    }
+
+    /**
+     * El modelo se nego a responder (OpenAI lo informa como "refusal"). No
+     * es un "cumple": las reglas de juicio quedan sin evaluar.
+     */
+    public static function refused(string $motivo): self
+    {
+        return new self('El modelo se nego a evaluar la pieza: '.mb_substr($motivo, 0, 300));
     }
 
     public static function requestFailed(int $status, string $body): self
@@ -70,7 +79,7 @@ final class AiException extends RuntimeException
     {
         return new self(
             'AI_DRIVER=fake no esta permitido en produccion: el driver simulado inventa resultados. '
-            .'Configura AI_DRIVER=anthropic y ANTHROPIC_API_KEY.'
+            .'Quita AI_DRIVER=fake y configura la clave del proveedor del modelo elegido.'
         );
     }
 }

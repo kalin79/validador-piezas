@@ -324,4 +324,30 @@ class ValidacionFallaCerradoTest extends TestCase
         $this->assertSame('max_tokens', $run->deterministic_results['ai_stop_reason']);
         $this->assertTrue($run->deterministic_results['ai_discarded_response']);
     }
+
+    public function test_validacion_completa_con_luna_registra_proveedor_y_costo(): void
+    {
+        $this->regla('COMP-001', 'judgment', 'compliance');
+        $this->regla('FMT-501', 'deterministic', 'composition');
+
+        config(['ai.driver' => 'real', 'ai.model' => 'gpt-6-luna', 'ai.openai.api_key' => 'sk-prueba',
+            'ai.pricing.gpt-6-luna' => ['input' => 0.10, 'output' => 0.50]]);
+
+        \Illuminate\Support\Facades\Http::fake(['api.openai.com/*' => \Illuminate\Support\Facades\Http::response([
+            'model' => 'gpt-6-luna', 'status' => 'completed',
+            'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
+                'extracted_text' => 'Invierte hoy. Rentabilidades pasadas no garantizan futuras.',
+                'text_blocks' => null, 'logo' => null, 'findings' => [],
+                'rule_assessments' => [['rule_code' => 'COMP-001', 'status' => 'cumple', 'evidence' => 'Leyenda de riesgo visible.', 'confidence' => 0.9]],
+            ])]]]],
+            'usage' => ['input_tokens' => 20_000, 'output_tokens' => 2_000],
+        ])]);
+
+        $run = (new ValidationRunner())->run($this->pieza());
+
+        $this->assertSame(VerdictStatus::Approved, $this->estado($run));
+        $this->assertSame('openai', $run->ai_provider);
+        $this->assertSame('gpt-6-luna', $run->model_identifier);
+        $this->assertEqualsWithDelta(0.003, (float) $run->cost_usd, 1e-6);
+    }
 }

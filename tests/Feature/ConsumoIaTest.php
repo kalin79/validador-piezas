@@ -12,6 +12,7 @@ use App\Models\Submission;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\ValidationRun;
+use App\Services\Ai\Proveedor;
 use App\Services\Consumo\ReporteDeConsumo;
 use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -49,6 +50,7 @@ class ConsumoIaTest extends TestCase
         config(['ai.pricing' => [
             'claude-sonnet-5' => ['input' => 2.00, 'output' => 10.00],
             'claude-opus-5' => ['input' => 5.00, 'output' => 25.00],
+            'gpt-6-luna' => ['input' => 0.10, 'output' => 0.50],
         ]]);
 
         $this->alfa = Client::create(['name' => 'Alfa', 'slug' => 'alfa', 'is_active' => true]);
@@ -91,7 +93,7 @@ class ConsumoIaTest extends TestCase
         $run = new ValidationRun;
         $run->forceFill([
             'asset_id' => $asset->id, 'brand_id' => $marca->id, 'status' => 'completed',
-            'model_identifier' => $modelo, 'input_tokens' => $in, 'output_tokens' => $out, 'cost_usd' => $costo,
+            'model_identifier' => $modelo, 'ai_provider' => $simulado ? 'fake' : Proveedor::de($modelo), 'input_tokens' => $in, 'output_tokens' => $out, 'cost_usd' => $costo,
             'deterministic_results' => $simulado ? ['ai_simulated' => true] : ['coverage' => []],
             'created_at' => $cuando->utc(), 'updated_at' => $cuando->utc(),
         ])->save();
@@ -206,5 +208,37 @@ class ConsumoIaTest extends TestCase
             ->assertSee('Consumo de IA')
             ->assertSee('Alfa')
             ->assertSee('Beta');
+    }
+
+    public function test_el_consumo_se_separa_por_proveedor_y_se_puede_filtrar(): void
+    {
+        // Beta: una validacion con Luna. 1M entrada + 100k salida = 0.10 + 0.05.
+        $this->ejecucion($this->marcaBeta, 'gpt-6-luna', 1_000_000, 100_000, 0.15, CarbonImmutable::parse('2026-09-15 12:00', 'America/Lima'));
+
+        $r = $this->reporte();
+        $prov = collect($r['proveedores'])->keyBy('clave');
+
+        $this->assertEqualsWithDelta(4.5, $prov['anthropic']['costo'], 1e-9);   // Sonnet de Alfa + Opus de Beta
+        $this->assertEqualsWithDelta(0.15, $prov['openai']['costo'], 1e-9);
+        $this->assertSame(1, $prov['openai']['llamadas']);
+
+        $beta = $this->cliente($r, 'Beta');
+        $this->assertEqualsWithDelta(0.15, collect($beta['proveedores'])->firstWhere('clave', 'openai')['costo'], 1e-9);
+        $this->assertSame('openai', collect($beta['modelos'])->firstWhere('nombre', 'gpt-6-luna')['proveedor']);
+
+        $solo = app(ReporteDeConsumo::class)->generar(
+            CarbonImmutable::parse('2026-09-01', 'America/Lima'), CarbonImmutable::parse('2026-09-30', 'America/Lima'),
+            [$this->marcaAlfa->id, $this->marcaBeta->id], null, 'openai',
+        );
+        $this->assertSame(1, $solo['total']['llamadas']);
+        $this->assertSame(['Beta'], collect($solo['clientes'])->pluck('cliente')->all());
+    }
+
+    public function test_sin_uso_de_un_proveedor_igual_aparece_en_cero(): void
+    {
+        $prov = collect($this->reporte()['proveedores'])->keyBy('clave');
+
+        $this->assertSame(0, $prov['openai']['llamadas']);
+        $this->assertSame(0.0, $prov['openai']['costo']);
     }
 }

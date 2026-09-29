@@ -4,14 +4,20 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\RuleCategory;
 use App\Enums\RuleOutcome;
 use App\Enums\ValidationStatus;
 use App\Models\Asset;
+use App\Models\Rule;
 use App\Models\ValidationRun;
+use App\Services\Ai\AiException;
+use App\Services\Ai\Proveedor;
 use App\Services\Validation\AiEvaluator;
 use App\Services\Validation\Coverage;
 use App\Services\Validation\DeterministicEngine;
+use App\Services\Validation\Evaluators\PaletteEvaluator;
 use App\Services\Validation\VerdictCalculator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -33,9 +39,9 @@ use Throwable;
 final class ValidationRunner
 {
     public function __construct(
-        private RuleResolver $resolver = new RuleResolver(),
-        private DeterministicEngine $engine = new DeterministicEngine(),
-        private VerdictCalculator $calculator = new VerdictCalculator(),
+        private RuleResolver $resolver = new RuleResolver,
+        private DeterministicEngine $engine = new DeterministicEngine,
+        private VerdictCalculator $calculator = new VerdictCalculator,
         private ?AiEvaluator $ai = null,
     ) {}
 
@@ -59,12 +65,12 @@ final class ValidationRunner
         ]);
 
         try {
-            $coverage = new Coverage();
+            $coverage = new Coverage;
             $determinista = $this->engine->run($asset, $resolved, $channel, $coverage);
             $todos = $determinista['findings'];
 
             $reglasPaleta = $resolved->deterministicRules()
-                ->filter(fn ($r): bool => $r->category === \App\Enums\RuleCategory::Palette);
+                ->filter(fn ($r): bool => $r->category === RuleCategory::Palette);
 
             $meta = [
                 // Copia de las paletas usadas: la paleta es editable y el
@@ -110,6 +116,7 @@ final class ValidationRunner
                     $actualizacion = [
                         'prompt_template_id' => $ia['template']->id,
                         'model_identifier' => $respuesta->model,
+                        'ai_provider' => $respuesta->simulated ? 'fake' : Proveedor::de($respuesta->model),
                         'input_tokens' => $respuesta->inputTokens,
                         'output_tokens' => $respuesta->outputTokens,
                         'raw_model_response' => json_encode($respuesta->raw, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR),
@@ -146,12 +153,13 @@ final class ValidationRunner
                     // Si el proveedor alcanzo a responder (y cobrar), se
                     // registra igual: el costo real no puede desaparecer
                     // porque la respuesta no sirvio.
-                    if ($e instanceof \App\Services\Ai\AiException && $e->respuestaParcial !== null) {
+                    if ($e instanceof AiException && $e->respuestaParcial !== null) {
                         $parcial = $e->respuestaParcial;
                         $meta['ai_stop_reason'] = $parcial->stopReason;
                         $meta['ai_discarded_response'] = true;
                         $actualizacion = [
                             'model_identifier' => $parcial->model,
+                            'ai_provider' => Proveedor::de($parcial->model),
                             'input_tokens' => $parcial->inputTokens,
                             'output_tokens' => $parcial->outputTokens,
                             'cost_usd' => $parcial->costUsd,
@@ -205,17 +213,17 @@ final class ValidationRunner
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, \App\Models\Rule>  $reglas
+     * @param  Collection<int, Rule>  $reglas
      * @return array<string, mixed>
      */
-    private function copiaDePaletas(Asset $asset, \Illuminate\Support\Collection $reglas): array
+    private function copiaDePaletas(Asset $asset, Collection $reglas): array
     {
         if ($reglas->isEmpty()) {
             return [];
         }
 
         try {
-            return (new \App\Services\Validation\Evaluators\PaletteEvaluator())->snapshot($asset, $reglas);
+            return (new PaletteEvaluator)->snapshot($asset, $reglas);
         } catch (Throwable $e) {
             // La copia es trazabilidad, no evaluacion: si falla se registra
             // el motivo en vez de tumbar la validacion.
@@ -225,7 +233,7 @@ final class ValidationRunner
 
     private function ai(): AiEvaluator
     {
-        return $this->ai ??= new AiEvaluator();
+        return $this->ai ??= new AiEvaluator;
     }
 
     /**

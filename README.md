@@ -7,7 +7,7 @@ Principio rector: **sin evidencia no hay "cumple"**. Si una regla no se pudo ver
 ## Cómo funciona
 
 1. **Motor determinista.** Mide formato, paleta (CIEDE2000), contraste (WCAG) y duplicados. Es exacto, barato y se ejecuta primero.
-2. **Motor de juicio.** Claude, con la API de Anthropic, evalúa copy, tono, cumplimiento normativo y logo. Debe pronunciarse regla por regla: cumple, incumple, no aplica o no determinable, cada una con evidencia y confianza.
+2. **Motor de juicio.** Un modelo de visión (OpenAI o Claude) evalúa copy, tono, cumplimiento normativo y logo. Debe pronunciarse regla por regla: cumple, incumple, no aplica o no determinable, cada una con evidencia y confianza.
 3. **Cobertura.** Registra qué se verificó realmente en cada regla. Solo una regla verificada puede contar como cumplida.
 4. **Veredicto.**
 
@@ -64,9 +64,23 @@ Una pieza se envía al director desde su carga, con el botón **Enviar al direct
 - **Aprobar** queda bloqueado si, después del envío, se revalidó la pieza y el nuevo veredicto ya no la aprueba.
 - **Avisos:** en el panel y por correo, al director cuando recibe una pieza y a quien envió cuando el director decide.
 
+## Modelos de IA
+
+Hay dos proveedores, y el proveedor sale del nombre del modelo: los `gpt-*` van a OpenAI y los `claude-*` a Anthropic.
+
+| Proveedor | Modelos | Tarifa US$ por millón (entrada / salida) |
+|---|---|---|
+| OpenAI | `gpt-6-luna` (**por defecto**), `gpt-6-sol`, `gpt-6-astra` | 0.10/0.50 · 2/10 · 10/50 |
+| Claude | `claude-sonnet-5`, `claude-opus-5`, `claude-haiku-4-5-20251001` | 2/10 · 5/25 · 1/5 |
+
+- **Modelo por defecto:** se define con `AI_MODEL` en el `.env`. Cada proveedor necesita su clave: `OPENAI_API_KEY` o `ANTHROPIC_API_KEY`.
+- **Otros modelos:** el super_admin puede validar una pieza con cualquiera de ellos desde "Validar con otro modelo".
+- **Luna está en evaluación:** es el modelo más barato y todavía no se ha calibrado contra las revisiones humanas. Hay que comparar su precisión en **Calidad del motor** antes de tomar sus veredictos como definitivos.
+- **Puntajes no comparables entre modelos:** un 90 de Luna y un 90 de Sonnet no significan lo mismo.
+
 ## Consumo de IA
 
-En el panel: **Operación → Consumo de IA** (permiso `audit.view`; cada usuario ve solo sus clientes). Muestra, por cliente y periodo, las validaciones con IA, los tokens y el costo, con el desglose por marca y por modelo. Se puede exportar a CSV.
+En el panel: **Operación → Consumo de IA** (permiso `audit.view`; cada usuario ve solo sus clientes). Arriba muestra el total por proveedor (Claude y OpenAI, cada uno con su color); al hacer clic en uno se filtra por ese proveedor. Muestra, por cliente y periodo, las validaciones con IA, los tokens y el costo, con el desglose por marca y por modelo. Se puede exportar a CSV.
 
 - **Tokens:** exactos. Son los que devuelve la API en cada respuesta.
 - **Costo:** tokens × tarifa pública de `config/ai.php`. Es exacto si la cuenta no tiene descuentos; la fuente oficial es la factura de Anthropic.

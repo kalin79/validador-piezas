@@ -3,6 +3,10 @@
     $usd = fn (?float $v, int $d = 2, string $vacio = 'sin tarifa'): string => $v === null ? $vacio : 'US$ '.number_format($v, $d, '.', ',');
     $n = fn (int|float $v): string => number_format((float) $v, 0, '.', ',');
     $maxCosto = $r ? max(0.0001, (float) collect($r['clientes'])->max('costo')) : 1;
+    // Un color fijo por proveedor para reconocerlo sin leer.
+    $colorProv = ['anthropic' => '#c2410c', 'openai' => '#047857', 'otro' => '#64748b'];
+    $etqProv = fn (?string $k): string => \App\Services\Ai\Proveedor::etiqueta($k === 'otro' ? null : $k);
+    $totalCosto = $r ? max(0.0001, (float) ($r['total']['costo'] ?? 0)) : 1;
 @endphp
 
 <x-filament-panels::page>
@@ -12,6 +16,17 @@
     .ci-filtros { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; padding: 1rem; border: 1px solid var(--b); border-radius: 1rem; }
     .ci-campo label { display: block; font-size: .75rem; font-weight: 600; color: var(--t2); margin-bottom: .25rem; }
     .ci-campo input, .ci-campo select { border: 1px solid var(--b); border-radius: .5rem; padding: .45rem .6rem; font-size: .875rem; background: transparent; color: inherit; }
+    .ci-provs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem; margin-top: 1rem; }
+    .ci-prov { text-align: left; padding: 1rem 1.125rem; border: 1px solid var(--b); border-left: 4px solid var(--pc); border-radius: .875rem; background: transparent; cursor: pointer; color: inherit; }
+    .ci-prov.on { background: color-mix(in srgb, var(--pc) 8%, transparent); border-color: var(--pc); }
+    .ci-prov-h { display: flex; justify-content: space-between; align-items: baseline; }
+    .ci-prov-n { font-weight: 700; color: var(--pc); }
+    .ci-prov-c { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .ci-prov-s { font-size: .75rem; color: var(--t2); margin-top: .25rem; }
+    .ci-prov-bar { height: 4px; border-radius: 4px; background: var(--s); margin-top: .5rem; overflow: hidden; }
+    .ci-prov-bar i { display: block; height: 100%; background: var(--pc); }
+    .ci-pchip { display: inline-block; font-size: .6875rem; font-weight: 700; padding: .05rem .45rem; border-radius: 999px; color: #fff; background: var(--pc); margin-right: .25rem; }
+    .ci-split { font-size: .75rem; color: var(--t2); margin-top: .25rem; }
     .ci-chips { display: flex; flex-wrap: wrap; gap: .375rem; }
     .ci-chip { font-size: .75rem; padding: .35rem .7rem; border-radius: 999px; border: 1px solid var(--b); background: var(--s); cursor: pointer; }
     .ci-chip:hover { border-color: #f59e0b; }
@@ -78,6 +93,29 @@
             <div class="ci-kpi"><span>Costo promedio</span><strong>{{ $usd($r['total']['promedio'], 4, '—') }}</strong><small>por validacion</small></div>
         </div>
 
+        <div class="ci-provs">
+            @foreach ($r['proveedores'] as $p)
+                <button type="button" class="ci-prov {{ $this->proveedor === $p['clave'] ? 'on' : '' }}" style="--pc: {{ $colorProv[$p['clave']] ?? '#64748b' }}"
+                    wire:click="$set('proveedor', '{{ $this->proveedor === $p['clave'] ? '' : $p['clave'] }}')"
+                    title="{{ $this->proveedor === $p['clave'] ? 'Quitar filtro' : 'Ver solo '.$p['nombre'] }}">
+                    <div class="ci-prov-h">
+                        <span class="ci-prov-n">{{ $p['nombre'] }}</span>
+                        <span class="ci-prov-c">{{ $usd($p['costo']) }}</span>
+                    </div>
+                    <div class="ci-prov-s">
+                        {{ $n($p['llamadas']) }} validaciones · {{ $n($p['entrada'] + $p['salida']) }} tokens
+                        @if ($p['llamadas'] > 0 && $p['costo'] !== null && ($r['total']['costo'] ?? 0) > 0)
+                            · {{ number_format($p['costo'] / $totalCosto * 100, 1) }}% del costo
+                        @endif
+                    </div>
+                    <div class="ci-prov-bar"><i style="width: {{ ($r['total']['costo'] ?? 0) > 0 ? round(($p['costo'] ?? 0) / $totalCosto * 100, 1) : 0 }}%"></i></div>
+                </button>
+            @endforeach
+        </div>
+        @if ($this->proveedor !== '')
+            <div class="ci-split" style="margin-top:.5rem">Mostrando solo {{ $etqProv($this->proveedor) }}. <a href="#" wire:click.prevent="$set('proveedor', '')" style="color:#2563eb; font-weight:600">Ver todos</a></div>
+        @endif
+
         @if ($r['modelos_sin_tarifa'] !== [])
             <div class="ci-aviso">Sin tarifa configurada para: <strong>{{ implode(', ', $r['modelos_sin_tarifa']) }}</strong>. Sus tokens se cuentan, pero su costo no se suma. Agrega la tarifa en config/ai.php.</div>
         @endif
@@ -87,6 +125,11 @@
                 <summary>
                     <div>
                         <div class="ci-nombre">{{ $c['cliente'] }}</div>
+                        <div class="ci-split">
+                            @foreach ($c['proveedores'] as $p)
+                                <span style="white-space:nowrap; margin-right:.625rem"><span class="ci-pchip" style="--pc: {{ $colorProv[$p['clave']] ?? '#64748b' }}">{{ $p['nombre'] }}</span>{{ $usd($p['costo']) }}</span>
+                            @endforeach
+                        </div>
                         <div class="ci-barra"><i style="width: {{ round(($c['costo'] ?? 0) / $maxCosto * 100, 1) }}%"></i></div>
                     </div>
                     <div class="ci-dato"><b>{{ $usd($c['costo']) }}</b><span>costo</span></div>
@@ -108,9 +151,9 @@
                     <div>
                         <h4>Por modelo</h4>
                         <table class="ci-tabla">
-                            <thead><tr><th>Modelo</th><th class="r">Validaciones</th><th class="r">Tokens entrada</th><th class="r">Tokens salida</th><th class="r">Costo</th></tr></thead>
+                            <thead><tr><th>Modelo</th><th>Proveedor</th><th class="r">Validaciones</th><th class="r">Tokens entrada</th><th class="r">Tokens salida</th><th class="r">Costo</th></tr></thead>
                             @foreach ($c['modelos'] as $m)
-                                <tr><td>{{ $m['nombre'] }}</td><td class="r">{{ $n($m['llamadas']) }}</td><td class="r">{{ $n($m['entrada']) }}</td><td class="r">{{ $n($m['salida']) }}</td><td class="r"><b>{{ $usd($m['costo']) }}</b></td></tr>
+                                <tr><td>{{ $m['nombre'] }}</td><td><span class="ci-pchip" style="--pc: {{ $colorProv[$m['proveedor']] ?? '#64748b' }}">{{ $etqProv($m['proveedor']) }}</span></td><td class="r">{{ $n($m['llamadas']) }}</td><td class="r">{{ $n($m['entrada']) }}</td><td class="r">{{ $n($m['salida']) }}</td><td class="r"><b>{{ $usd($m['costo']) }}</b></td></tr>
                             @endforeach
                         </table>
                     </div>
@@ -122,9 +165,9 @@
 
         <div class="ci-nota">
             <strong>Como se calcula.</strong>
-            Tokens: los que reporto la API de Anthropic en cada validacion (incluyen la imagen); son exactos.
-            Costo: tokens × tarifa publica de Anthropic verificada el {{ \Carbon\Carbon::parse(config('ai.pricing_verified_at'))->format('d/m/Y') }}, en dolares y sin impuestos.
-            Es el monto exacto si tu cuenta no tiene descuentos; la factura de Anthropic es la fuente oficial.
+            Tokens: los que reporto la API de cada proveedor (Anthropic u OpenAI) en cada validacion; incluyen la imagen y, en OpenAI, el razonamiento. Son exactos.
+            Costo: tokens × tarifa publica del proveedor verificada el {{ \Carbon\Carbon::parse(config('ai.pricing_verified_at'))->format('d/m/Y') }}, en dolares y sin impuestos.
+            Es el monto exacto si tu cuenta no tiene descuentos; la factura de cada proveedor es la fuente oficial.
             Periodo en hora local ({{ \App\Support\Fecha::zona() }}): {{ $r['desde']->format('d/m/Y') }} al {{ $r['hasta']->format('d/m/Y') }}.
             @if ($r['total']['costo'] !== null && ! $r['total']['costo_incompleto'] && abs($r['total']['registrado'] - $r['total']['costo']) > 0.01)
                 <br>El costo guardado al momento de cada validacion suma {{ $usd($r['total']['registrado']) }}. Ese valor se congelo con la tarifa configurada entonces; hasta el 25/09/2026 Sonnet 5 figuraba a US$ 3/15 por millon en lugar de 2/10.

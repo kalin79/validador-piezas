@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Validation;
 
-use App\Models\Asset;
-use App\Models\Rule;
 use App\Enums\RuleCategory;
+use App\Enums\RuleOutcome;
+use App\Models\Asset;
 use App\Models\PromptTemplate;
+use App\Models\Rule;
 use App\Services\Ai\AiException;
 use App\Services\Ai\ImagePreparer;
 use App\Services\Ai\VisionProvider;
@@ -28,12 +29,13 @@ final class AiEvaluator
 {
     public function __construct(
         private ?VisionProvider $provider = null,
-        private PromptBuilder $promptBuilder = new PromptBuilder(),
-        private AiFindingMapper $mapper = new AiFindingMapper(),
-        private LogoEvaluator $logoEvaluator = new LogoEvaluator(),
-        private ImagePreparer $imagePreparer = new ImagePreparer(),
+        private PromptBuilder $promptBuilder = new PromptBuilder,
+        private AiFindingMapper $mapper = new AiFindingMapper,
+        private LogoEvaluator $logoEvaluator = new LogoEvaluator,
+        private ImagePreparer $imagePreparer = new ImagePreparer,
     ) {
-        $this->provider ??= VisionProviderFactory::make();
+        // Sin proveedor inyectado se resuelve en cada evaluacion segun el
+        // modelo: Luna va a OpenAI y Sonnet a Anthropic.
     }
 
     /**
@@ -43,7 +45,7 @@ final class AiEvaluator
      *     response: VisionResponse,
      *     template: PromptTemplate,
      *     discarded: array<int, string>,
-     *     coverage: array<string, array{outcome: \App\Enums\RuleOutcome, reason: string|null}>,
+     *     coverage: array<string, array{outcome: RuleOutcome, reason: string|null}>,
      *     extracted_text: string|null,
      *     user_prompt: string
      * }
@@ -70,7 +72,9 @@ final class AiEvaluator
 
         $codigosJuicio = $resolved->judgmentRules()->pluck('code')->values()->all();
 
-        $respuesta = $this->provider->analyze(new VisionRequest(
+        $proveedor = $this->provider ?? VisionProviderFactory::make(model: $model);
+
+        $respuesta = $proveedor->analyze(new VisionRequest(
             systemPrompt: $prompts['system'],
             userPrompt: $prompts['user']."\n\n".self::instruccionDeCobertura($codigosJuicio),
             imageBase64: $imagen['data'],
@@ -110,7 +114,7 @@ final class AiEvaluator
         // no puede quedar como cumplida aunque el modelo lo haya dicho.
         if ($reglaActivos !== null && $logo['undetermined'] !== null && $logo['findings'] === []) {
             $cobertura[$reglaActivos->code] = [
-                'outcome' => \App\Enums\RuleOutcome::NotDeterminable,
+                'outcome' => RuleOutcome::NotDeterminable,
                 'reason' => $logo['undetermined'],
             ];
         }
@@ -198,7 +202,7 @@ final class AiEvaluator
             ."- 0.9 a 1.0: lo ves explicitamente en la pieza (texto legible, elemento claro).\n"
             ."- 0.7 a 0.89: evidencia visual solida, con alguna interpretacion menor.\n"
             ."- 0.5 a 0.69: inferencia razonable, pero otra persona podria concluir distinto.\n"
-            ."- menos de 0.5: no lo sostienes; en ese caso usa no_determinable, no cumple.";
+            .'- menos de 0.5: no lo sostienes; en ese caso usa no_determinable, no cumple.';
     }
 
     /**

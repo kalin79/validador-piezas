@@ -58,8 +58,10 @@ DB_QUEUE_RETRY_AFTER=480
 FILESYSTEM_DISK=local
 PIEZAS_DISK=local
 
-AI_DRIVER=anthropic
-ANTHROPIC_API_KEY=<clave>
+AI_DRIVER=real
+AI_MODEL=gpt-6-luna
+OPENAI_API_KEY=<clave>
+ANTHROPIC_API_KEY=<clave>             # solo si se usaran modelos Claude
 AI_MAX_TOKENS=16000
 
 LOG_STACK=daily

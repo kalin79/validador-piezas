@@ -6,6 +6,7 @@ namespace App\Services\Consumo;
 
 use App\Models\Brand;
 use App\Models\ValidationRun;
+use App\Services\Ai\Proveedor;
 use App\Services\Ai\TokenEstimator;
 use App\Support\Fecha;
 use Carbon\CarbonImmutable;
@@ -25,6 +26,9 @@ use Carbon\CarbonImmutable;
  * congelo con la tarifa del momento, y hasta 2026-09-25 Sonnet 5 estaba
  * configurado a 3/15 en lugar de 2/10. Se informan los dos para transparencia.
  *
+ * Se agrupa ademas por proveedor (Claude, OpenAI) con la columna ai_provider
+ * de cada ejecucion, para ver de un vistazo cuanto se gasta en cada uno.
+ *
  * Quedan fuera las ejecuciones del driver simulado (no llamaron a la API) y
  * las que no registraron tokens.
  */
@@ -37,10 +41,11 @@ final class ReporteDeConsumo
      *     desde: CarbonImmutable, hasta: CarbonImmutable,
      *     clientes: array<int, array<string, mixed>>,
      *     total: array<string, mixed>,
-     *     modelos_sin_tarifa: array<int, string>
+     *     modelos_sin_tarifa: array<int, string>,
+     *     proveedores: array<int, array<string, mixed>>
      * }
      */
-    public function generar(CarbonImmutable $desde, CarbonImmutable $hasta, array $marcasPermitidas, ?array $clientes = null): array
+    public function generar(CarbonImmutable $desde, CarbonImmutable $hasta, array $marcasPermitidas, ?array $clientes = null, ?string $proveedor = null): array
     {
         // El usuario elige fechas en su zona; la base guarda en UTC.
         $zona = Fecha::zona();
@@ -60,12 +65,21 @@ final class ReporteDeConsumo
             ->where(fn ($q) => $q->where('input_tokens', '>', 0)->orWhere('output_tokens', '>', 0))
             ->where(fn ($q) => $q->whereNull('deterministic_results->ai_simulated')
                 ->orWhere('deterministic_results->ai_simulated', false))
-            ->selectRaw('brand_id, model_identifier, COUNT(*) as llamadas, SUM(input_tokens) as entrada, SUM(output_tokens) as salida, SUM(cost_usd) as registrado')
-            ->groupBy('brand_id', 'model_identifier')
+            ->when(filled($proveedor), fn ($q) => $q->where('ai_provider', $proveedor))
+            ->selectRaw('brand_id, model_identifier, ai_provider, COUNT(*) as llamadas, SUM(input_tokens) as entrada, SUM(output_tokens) as salida, SUM(cost_usd) as registrado')
+            ->groupBy('brand_id', 'model_identifier', 'ai_provider')
             ->get();
 
         $sinTarifa = [];
         $porCliente = [];
+
+        // Siempre aparecen todos los proveedores configurados, aunque esten en
+        // cero: asi se ve de un vistazo que uno no se uso en el periodo.
+        $proveedores = [];
+
+        foreach (array_keys((array) config('ai.providers', [])) as $clave) {
+            $this->sumar($proveedores[$clave], ['clave' => $clave, 'nombre' => Proveedor::etiqueta($clave)], 0, 0, 0, 0.0, 0.0);
+        }
 
         foreach ($filas as $f) {
             $marca = $marcas->get($f->brand_id);
@@ -84,6 +98,11 @@ final class ReporteDeConsumo
             }
 
             $costo = $tarifa === null ? null : TokenEstimator::costUsd($tarifa, $entrada, $salida);
+            $prov = (string) ($f->ai_provider ?: (Proveedor::de($modelo) ?? 'otro'));
+            $llamadas = (int) $f->llamadas;
+            $registrado = (float) $f->registrado;
+
+            $this->sumar($proveedores[$prov], ['clave' => $prov, 'nombre' => Proveedor::etiqueta($prov === 'otro' ? null : $prov)], $llamadas, $entrada, $salida, $costo, $registrado);
 
             $clienteId = (int) $marca->client_id;
             $porCliente[$clienteId] ??= [
@@ -91,12 +110,14 @@ final class ReporteDeConsumo
                 'cliente' => $marca->client?->name ?? '—',
                 'marcas' => [],
                 'modelos' => [],
+                'proveedores' => [],
             ];
 
             $c = &$porCliente[$clienteId];
-            $this->sumar($c['marcas'][$marca->id], ['nombre' => $marca->name], (int) $f->llamadas, $entrada, $salida, $costo, (float) $f->registrado);
-            $this->sumar($c['modelos'][$modelo], ['nombre' => $modelo], (int) $f->llamadas, $entrada, $salida, $costo, (float) $f->registrado);
-            $this->sumar($c, [], (int) $f->llamadas, $entrada, $salida, $costo, (float) $f->registrado);
+            $this->sumar($c['marcas'][$marca->id], ['nombre' => $marca->name], $llamadas, $entrada, $salida, $costo, $registrado);
+            $this->sumar($c['modelos'][$modelo], ['nombre' => $modelo, 'proveedor' => $prov], $llamadas, $entrada, $salida, $costo, $registrado);
+            $this->sumar($c['proveedores'][$prov], ['clave' => $prov, 'nombre' => Proveedor::etiqueta($prov === 'otro' ? null : $prov)], $llamadas, $entrada, $salida, $costo, $registrado);
+            $this->sumar($c, [], $llamadas, $entrada, $salida, $costo, $registrado);
             unset($c);
         }
 
@@ -104,6 +125,7 @@ final class ReporteDeConsumo
             ->map(function (array $c): array {
                 $c['marcas'] = collect($c['marcas'])->map(fn (array $m): array => $this->cerrar($m))->sortByDesc('costo')->values()->all();
                 $c['modelos'] = collect($c['modelos'])->map(fn (array $m): array => $this->cerrar($m))->sortByDesc('costo')->values()->all();
+                $c['proveedores'] = collect($c['proveedores'])->map(fn (array $m): array => $this->cerrar($m))->sortByDesc('costo')->values()->all();
 
                 return $this->cerrar($c);
             })
@@ -128,6 +150,7 @@ final class ReporteDeConsumo
             'clientes' => $clientesOrdenados,
             'total' => $total,
             'modelos_sin_tarifa' => array_keys($sinTarifa),
+            'proveedores' => collect($proveedores)->map(fn (array $p): array => $this->cerrar($p))->values()->all(),
         ];
     }
 
