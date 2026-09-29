@@ -13,6 +13,7 @@ use App\Services\Ai\VisionProviderFactory;
 use App\Services\Ai\VisionRequest;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -178,5 +179,41 @@ class OpenAiProviderTest extends TestCase
 
         config(['ai.model' => 'gpt-6-luna']);
         $this->assertInstanceOf(OpenAiProvider::class, VisionProviderFactory::make());
+    }
+
+    public function test_sin_saldo_no_reintenta_y_explica_que_hacer(): void
+    {
+        config(['ai.openai.max_retries' => 3]);
+        Sleep::fake();
+
+        Http::fake(['api.openai.com/*' => Http::response(['error' => [
+            'message' => 'You have no credits remaining. Add credits to continue using the API.',
+            'type' => 'insufficient_quota', 'param' => null, 'code' => 'credit_balance_exhausted',
+        ]], 429)]);
+
+        try {
+            (new OpenAiProvider)->analyze($this->peticion());
+            $this->fail('Deberia lanzar');
+        } catch (AiException $e) {
+            $this->assertStringStartsWith('OpenAI respondio 429 (credit_balance_exhausted). La cuenta del proveedor no tiene saldo', $e->getMessage());
+            $this->assertStringNotContainsString('{', $e->getMessage());
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_limite_de_velocidad_si_se_reintenta(): void
+    {
+        config(['ai.openai.max_retries' => 3]);
+        Sleep::fake();
+
+        Http::fakeSequence('api.openai.com/*')
+            ->push(['error' => ['message' => 'Rate limit reached', 'type' => 'requests', 'code' => 'rate_limit_exceeded']], 429)
+            ->push($this->respuestaOk(['findings' => []]));
+
+        $r = (new OpenAiProvider)->analyze($this->peticion());
+
+        $this->assertSame([], $r->data['findings']);
+        Http::assertSentCount(2);
     }
 }

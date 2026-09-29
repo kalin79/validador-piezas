@@ -47,7 +47,9 @@ final class AiEvaluator
      *     discarded: array<int, string>,
      *     coverage: array<string, array{outcome: RuleOutcome, reason: string|null}>,
      *     extracted_text: string|null,
-     *     user_prompt: string
+     *     user_prompt: string,
+     *     colores: array<int, array{hex: string, share: float}>,
+     *     color_origins: array<int, mixed>
      * }
      */
     public function evaluate(
@@ -71,15 +73,17 @@ final class AiEvaluator
         }
 
         $codigosJuicio = $resolved->judgmentRules()->pluck('code')->values()->all();
+        $colores = AtribucionDeColores::colores($asset, $resolved);
 
         $proveedor = $this->provider ?? VisionProviderFactory::make(model: $model);
 
         $respuesta = $proveedor->analyze(new VisionRequest(
             systemPrompt: $prompts['system'],
-            userPrompt: $prompts['user']."\n\n".self::instruccionDeCobertura($codigosJuicio),
+            userPrompt: $prompts['user']."\n\n".self::instruccionDeCobertura($codigosJuicio)
+                .($colores === [] ? '' : "\n\n".AtribucionDeColores::instruccion($colores)),
             imageBase64: $imagen['data'],
             imageMediaType: $imagen['media_type'],
-            outputSchema: self::conCobertura($template->output_schema, $codigosJuicio),
+            outputSchema: self::conCobertura($template->output_schema, $codigosJuicio, $colores),
             imageWidth: $imagen['width'],
             imageHeight: $imagen['height'],
             model: $model,
@@ -127,6 +131,8 @@ final class AiEvaluator
             'coverage' => $cobertura,
             'extracted_text' => $respuesta->data['extracted_text'] ?? null,
             'user_prompt' => $prompts['user'],
+            'colores' => $colores,
+            'color_origins' => is_array($respuesta->data['color_origins'] ?? null) ? $respuesta->data['color_origins'] : [],
         ];
     }
 
@@ -142,7 +148,7 @@ final class AiEvaluator
      * @param  array<int, string>  $codigos
      * @return array<string, mixed>
      */
-    public static function conCobertura(array $schema, array $codigos): array
+    public static function conCobertura(array $schema, array $codigos, array $colores = []): array
     {
         $schema['type'] ??= 'object';
         $schema['properties'] = (array) ($schema['properties'] ?? []);
@@ -178,9 +184,18 @@ final class AiEvaluator
             $schema['properties']['findings']['items']['properties']['confidence']['maximum'] = 1;
         }
 
+        $requeridos = ['findings', 'rule_assessments'];
+
+        // Origen de cada color medido (foto o diseno), para no reportar como
+        // fuera de paleta los colores de una fotografia.
+        if ($colores !== []) {
+            $schema['properties']['color_origins'] = AtribucionDeColores::esquema($colores);
+            $requeridos[] = 'color_origins';
+        }
+
         $schema['required'] = array_values(array_unique(array_merge(
             (array) ($schema['required'] ?? []),
-            ['findings', 'rule_assessments'],
+            $requeridos,
         )));
 
         return $schema;

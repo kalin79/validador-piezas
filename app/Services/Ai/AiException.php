@@ -39,9 +39,66 @@ final class AiException extends RuntimeException
         return new self('El modelo se nego a evaluar la pieza: '.mb_substr($motivo, 0, 300));
     }
 
-    public static function requestFailed(int $status, string $body): self
+    /**
+     * Errores que no se arreglan reintentando: sin saldo, clave invalida,
+     * sin permiso. Reintentarlos solo demora el fallo.
+     */
+    private const PERMANENTES = [
+        'insufficient_quota', 'credit_balance_exhausted', 'billing_hard_limit_reached',
+        'invalid_api_key', 'authentication_error', 'permission_error', 'model_not_found',
+    ];
+
+    /** Que hacer ante cada error conocido, en palabras de quien opera. */
+    private const INDICACIONES = [
+        'insufficient_quota' => 'La cuenta del proveedor no tiene saldo: carga creditos en su panel de facturacion.',
+        'credit_balance_exhausted' => 'La cuenta del proveedor no tiene saldo: carga creditos en su panel de facturacion.',
+        'billing_hard_limit_reached' => 'Se alcanzo el limite de gasto de la cuenta: subelo en el panel de facturacion.',
+        'invalid_api_key' => 'La clave de API no es valida: revisala en el .env.',
+        'authentication_error' => 'La clave de API no es valida: revisala en el .env.',
+        'permission_error' => 'La clave no tiene permiso para este modelo.',
+        'model_not_found' => 'El modelo no existe o la cuenta no tiene acceso a el.',
+        'rate_limit_exceeded' => 'Limite de velocidad del proveedor: se reintento y siguio saturado. Prueba en unos minutos.',
+        'rate_limit_error' => 'Limite de velocidad del proveedor: se reintento y siguio saturado. Prueba en unos minutos.',
+        'overloaded_error' => 'El proveedor esta saturado. Prueba en unos minutos.',
+    ];
+
+    /**
+     * Un mensaje de una linea en vez del JSON crudo del proveedor. El cuerpo
+     * completo queda en el log; aqui va lo que sirve para actuar.
+     */
+    public static function requestFailed(int $status, string $body, string $proveedor = 'La API'): self
     {
-        return new self("La API respondio {$status}: ".mb_substr($body, 0, 500));
+        $json = json_decode($body, true);
+        $error = is_array($json) ? (array) ($json['error'] ?? []) : [];
+        $codigo = (string) ($error['code'] ?? '') ?: (string) ($error['type'] ?? '');
+        $mensaje = trim((string) ($error['message'] ?? ''));
+
+        if ($mensaje === '') {
+            $mensaje = mb_substr(trim(preg_replace('/\s+/', ' ', $body) ?? ''), 0, 200);
+        }
+
+        $indicacion = self::INDICACIONES[$codigo] ?? self::INDICACIONES[(string) ($error['type'] ?? '')] ?? null;
+
+        return new self(sprintf(
+            '%s respondio %d%s%s%s',
+            $proveedor,
+            $status,
+            $codigo !== '' ? " ({$codigo})" : '',
+            $indicacion !== null ? '. '.$indicacion : '',
+            $mensaje !== '' ? ' Detalle: '.mb_substr($mensaje, 0, 200) : '',
+        ));
+    }
+
+    /**
+     * Si un error HTTP del proveedor es permanente segun su cuerpo.
+     */
+    public static function esPermanente(?string $body): bool
+    {
+        $json = json_decode((string) $body, true);
+        $error = is_array($json) ? (array) ($json['error'] ?? []) : [];
+
+        return in_array((string) ($error['code'] ?? ''), self::PERMANENTES, true)
+            || in_array((string) ($error['type'] ?? ''), self::PERMANENTES, true);
     }
 
     public static function noToolUse(): self

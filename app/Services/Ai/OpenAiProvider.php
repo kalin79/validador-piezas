@@ -86,6 +86,7 @@ final class OpenAiProvider implements VisionProvider
                 // Igual que con Anthropic: se reintenta solo lo transitorio.
                 when: fn (\Throwable $e): bool => $e instanceof ConnectionException
                     || ($e instanceof RequestException
+                        && ! AiException::esPermanente($e->response->body())
                         && in_array($e->response->status(), [429, 500, 502, 503, 504], true)),
             )
             ->post(rtrim((string) config('ai.openai.base_url'), '/').'/v1/responses', $payload);
@@ -95,9 +96,11 @@ final class OpenAiProvider implements VisionProvider
                 'provider' => 'openai',
                 'status' => $respuesta->status(),
                 'model' => $model,
+                // El cuerpo completo va al log; al usuario, una linea.
+                'body' => mb_substr($respuesta->body(), 0, 2000),
             ]);
 
-            throw AiException::requestFailed($respuesta->status(), $respuesta->body());
+            throw AiException::requestFailed($respuesta->status(), $respuesta->body(), 'OpenAI');
         }
 
         $cuerpo = (array) $respuesta->json();

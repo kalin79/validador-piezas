@@ -10,6 +10,7 @@ use App\Enums\VerdictStatus;
 use App\Models\Asset;
 use App\Models\Brand;
 use App\Models\Client;
+use App\Models\Palette;
 use App\Models\RuleSet;
 use App\Models\Submission;
 use App\Models\User;
@@ -25,7 +26,9 @@ use App\Services\Validation\RuleStatusReport;
 use App\Services\ValidationRunner;
 use Database\Seeders\PromptTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 /**
@@ -254,7 +257,7 @@ class ValidacionFallaCerradoTest extends TestCase
     {
         $this->regla('COMP-001', 'judgment', 'compliance');
 
-        $runner = new ValidationRunner(ai: new AiEvaluator(provider: new FakeProvider()));
+        $runner = new ValidationRunner(ai: new AiEvaluator(provider: new FakeProvider));
         $pieza = $this->pieza();
         $run = $runner->run($pieza);
 
@@ -333,7 +336,7 @@ class ValidacionFallaCerradoTest extends TestCase
         config(['ai.driver' => 'real', 'ai.model' => 'gpt-6-luna', 'ai.openai.api_key' => 'sk-prueba',
             'ai.pricing.gpt-6-luna' => ['input' => 0.10, 'output' => 0.50]]);
 
-        \Illuminate\Support\Facades\Http::fake(['api.openai.com/*' => \Illuminate\Support\Facades\Http::response([
+        Http::fake(['api.openai.com/*' => Http::response([
             'model' => 'gpt-6-luna', 'status' => 'completed',
             'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
                 'extracted_text' => 'Invierte hoy. Rentabilidades pasadas no garantizan futuras.',
@@ -343,11 +346,146 @@ class ValidacionFallaCerradoTest extends TestCase
             'usage' => ['input_tokens' => 20_000, 'output_tokens' => 2_000],
         ])]);
 
-        $run = (new ValidationRunner())->run($this->pieza());
+        $run = (new ValidationRunner)->run($this->pieza());
 
         $this->assertSame(VerdictStatus::Approved, $this->estado($run));
         $this->assertSame('openai', $run->ai_provider);
         $this->assertSame('gpt-6-luna', $run->model_identifier);
         $this->assertEqualsWithDelta(0.003, (float) $run->cost_usd, 1e-6);
+    }
+
+    public function test_sin_saldo_en_openai_queda_claro_en_la_ejecucion_y_el_diagnostico(): void
+    {
+        $this->regla('COMP-001', 'judgment', 'compliance');
+
+        config(['ai.driver' => 'real', 'ai.model' => 'gpt-6-luna', 'ai.openai.api_key' => 'sk-prueba']);
+        Sleep::fake();
+        Http::fake(['api.openai.com/*' => Http::response(['error' => [
+            'message' => 'You have no credits remaining.', 'type' => 'insufficient_quota', 'code' => 'credit_balance_exhausted',
+        ]], 429)]);
+
+        $run = (new ValidationRunner)->run($this->pieza());
+
+        $this->assertSame(VerdictStatus::NotEvaluated, $this->estado($run));
+        $this->assertSame('gpt-6-luna', $run->deterministic_results['ai_model_attempted']);
+        $this->assertStringContainsString('no tiene saldo', (string) $run->error_message);
+        $this->assertStringNotContainsString('{', (string) $run->deterministic_results['coverage']['COMP-001']['reason']);
+
+        $this->artisan('validacion:diagnostico', ['id' => $run->id])
+            ->expectsOutputToContain('Proveedor: OpenAI · Modelo: gpt-6-luna (sin respuesta)')
+            ->assertSuccessful();
+    }
+
+    /** Pieza con foto: dos colores de la foto dominan y un diseno azul y blanco. */
+    private function piezaConFoto(bool $conProhibido = false): Asset
+    {
+        $paleta = Palette::create(['brand_id' => $this->brand->id, 'name' => 'Marca', 'default_delta_e_tolerance' => 5, 'is_active' => true]);
+        $paleta->colors()->create(['name' => 'Azul', 'hex' => '#0033A0']);
+        $paleta->colors()->create(['name' => 'Blanco', 'hex' => '#FFFFFF']);
+
+        if ($conProhibido) {
+            $paleta->colors()->create(['name' => 'Cafe vetado', 'hex' => '#312218', 'is_forbidden' => true]);
+        }
+
+        $this->regla('PAL-501', 'deterministic', 'palette');
+        $this->regla('TYPO-001', 'deterministic', 'typography', ['severity' => 'info']);
+        $this->regla('COMP-001', 'judgment', 'compliance');
+
+        $pieza = $this->pieza();
+        $pieza->update(['extracted_palette' => [
+            ['hex' => '#312218', 'share' => 0.35, 'percent' => 35.0],
+            ['hex' => '#87624C', 'share' => 0.25, 'percent' => 25.0],
+            ['hex' => '#FFFFFF', 'share' => 0.20, 'percent' => 20.0],
+            ['hex' => '#0033A0', 'share' => 0.20, 'percent' => 20.0],
+        ]]);
+
+        return $pieza->fresh();
+    }
+
+    /** @param  array<int, array<string, mixed>>  $origenes */
+    private function respuestaConColores(array $origenes): array
+    {
+        return [
+            'findings' => [],
+            'rule_assessments' => [['rule_code' => 'COMP-001', 'status' => 'cumple', 'evidence' => 'Leyenda visible.', 'confidence' => 0.9]],
+            'color_origins' => $origenes,
+        ];
+    }
+
+    public function test_los_colores_de_la_foto_no_cuentan_como_fuera_de_paleta_ni_para_contraste(): void
+    {
+        $pieza = $this->piezaConFoto();
+
+        // Sin IA: la foto genera hallazgos de paleta y de contraste.
+        $sinIa = (new ValidationRunner(ai: new AiEvaluator(provider: new class implements VisionProvider
+        {
+            public function name(): string
+            {
+                return 'x';
+            }
+
+            public function analyze(VisionRequest $r): VisionResponse
+            {
+                throw new AiException('caida');
+            }
+        })))->run($pieza);
+        $this->assertTrue($sinIa->findings->contains('rule_code', 'PAL-501'));
+        $this->assertTrue($sinIa->findings->contains('rule_code', 'TYPO-001'));
+
+        $run = $this->runner($this->respuestaConColores([
+            ['hex' => '#312218', 'origin' => 'fotografia', 'confidence' => 0.92],
+            ['hex' => '#87624C', 'origin' => 'fotografia', 'confidence' => 0.88],
+            ['hex' => '#FFFFFF', 'origin' => 'diseno', 'confidence' => 0.95],
+            ['hex' => '#0033A0', 'origin' => 'diseno', 'confidence' => 0.95],
+        ]))->run($pieza);
+
+        $this->assertFalse($run->findings->contains('rule_code', 'PAL-501'));
+        $this->assertFalse($run->findings->contains('rule_code', 'TYPO-001'));
+        $this->assertSame(['#312218', '#87624C'], array_column($run->deterministic_results['colores_de_fotografia'], 'hex'));
+        $this->assertSame(VerdictStatus::Approved, $this->estado($run));
+        // La paleta guardada de la pieza no cambia.
+        $this->assertCount(4, $pieza->fresh()->extracted_palette);
+    }
+
+    public function test_con_confianza_baja_el_color_se_sigue_midiendo(): void
+    {
+        $run = $this->runner($this->respuestaConColores([
+            ['hex' => '#312218', 'origin' => 'fotografia', 'confidence' => 0.92],
+            ['hex' => '#87624C', 'origin' => 'fotografia', 'confidence' => 0.55],
+            ['hex' => '#FFFFFF', 'origin' => 'diseno', 'confidence' => 0.95],
+            ['hex' => '#0033A0', 'origin' => 'diseno', 'confidence' => 0.95],
+        ]))->run($this->piezaConFoto());
+
+        $pal = $run->findings->where('rule_code', 'PAL-501');
+        $this->assertTrue($pal->contains(fn ($f) => str_contains($f->description, '#87624C')));
+        $this->assertFalse($pal->contains(fn ($f) => str_contains($f->description, '#312218')));
+    }
+
+    public function test_un_color_prohibido_no_se_excluye_aunque_este_en_la_foto(): void
+    {
+        $run = $this->runner($this->respuestaConColores([
+            ['hex' => '#312218', 'origin' => 'fotografia', 'confidence' => 0.99],
+            ['hex' => '#87624C', 'origin' => 'fotografia', 'confidence' => 0.9],
+            ['hex' => '#FFFFFF', 'origin' => 'diseno', 'confidence' => 0.95],
+            ['hex' => '#0033A0', 'origin' => 'diseno', 'confidence' => 0.95],
+        ]))->run($this->piezaConFoto(conProhibido: true));
+
+        $this->assertTrue($run->findings->contains(fn ($f) => $f->rule_code === 'PAL-501' && $f->severity->value === 'blocking'));
+        $this->assertSame(VerdictStatus::Rejected, $this->estado($run));
+    }
+
+    public function test_si_todo_es_foto_la_paleta_queda_sin_determinar(): void
+    {
+        $pieza = $this->piezaConFoto();
+        $pieza->update(['extracted_palette' => [['hex' => '#312218', 'share' => 0.6, 'percent' => 60.0], ['hex' => '#87624C', 'share' => 0.4, 'percent' => 40.0]]]);
+
+        $run = $this->runner($this->respuestaConColores([
+            ['hex' => '#312218', 'origin' => 'fotografia', 'confidence' => 0.9],
+            ['hex' => '#87624C', 'origin' => 'fotografia', 'confidence' => 0.9],
+        ]))->run($pieza->fresh());
+
+        $this->assertSame('not_determinable', $run->deterministic_results['coverage']['PAL-501']['outcome']);
+        $this->assertSame('not_determinable', $run->deterministic_results['coverage']['TYPO-001']['outcome']);
+        $this->assertSame(VerdictStatus::RequiresReview, $this->estado($run));
     }
 }

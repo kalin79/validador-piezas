@@ -49,7 +49,13 @@ class DiagnosticarValidacion extends Command
             .' · '.($run->asset?->original_filename ?? '—'));
         $this->line('Estado: '.$run->status->value.' · Veredicto: '.($v?->status->label() ?? '—')
             .' · Puntaje: '.($v?->score ?? '—').' · Formula v'.($v?->scoring_formula_snapshot['formula_version'] ?? '—'));
-        $this->line('Proveedor: '.Proveedor::etiqueta($run->ai_provider).' · Modelo: '.($run->model_identifier ?? '—').' · stop_reason: '.($meta['ai_stop_reason'] ?? '—')
+        // Si la llamada fallo sin respuesta no hay model_identifier: se muestra
+        // el modelo que se intento usar.
+        $modelo = $run->model_identifier ?? ($meta['ai_model_attempted'] ?? null);
+        $proveedor = $run->ai_provider ?? Proveedor::de($modelo);
+        $this->line('Proveedor: '.Proveedor::etiqueta($proveedor).' · Modelo: '.($modelo ?? '—')
+            .($run->model_identifier === null && $modelo !== null ? ' (sin respuesta)' : '')
+            .' · stop_reason: '.($meta['ai_stop_reason'] ?? '—')
             .' · tokens salida: '.($run->output_tokens ?? '—').' · USD '.($run->cost_usd ?? '—'));
 
         if ($run->error_message) {
@@ -74,6 +80,15 @@ class DiagnosticarValidacion extends Command
 
         foreach ($pendientes as $codigo => $p) {
             $this->line("  {$codigo} · {$p['outcome']} · ".mb_substr((string) ($p['reason'] ?? ''), 0, 130));
+        }
+
+        if (($fotos = (array) ($meta['colores_de_fotografia'] ?? [])) !== []) {
+            $this->newLine();
+            $this->line('<options=bold>Colores de la fotografia (excluidos de paleta y contraste)</>');
+
+            foreach ($fotos as $c) {
+                $this->line(sprintf('  %s · %.1f%% · confianza %.2f', $c['hex'], $c['share'] * 100, $c['confidence']));
+            }
         }
 
         if (($descartados = (array) ($meta['ai_discarded'] ?? [])) !== []) {

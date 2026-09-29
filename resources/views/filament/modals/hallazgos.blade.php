@@ -342,6 +342,19 @@
                 <div class="hz-error hz-texto">{{ $run->error_message }}</div>
             @endif
 
+            @if (! empty($meta['colores_de_fotografia']))
+                <div class="hz-texto" style="font-size:.8125rem; padding:.625rem .875rem; border-radius:.625rem; background:rgba(100,116,139,.08); margin-top:.75rem">
+                    <strong>Colores de la fotografia excluidos de paleta y contraste:</strong>
+                    @foreach ($meta['colores_de_fotografia'] as $c)
+                        <span style="white-space:nowrap; margin-left:.375rem">
+                            <i style="display:inline-block; width:.75rem; height:.75rem; border-radius:3px; vertical-align:-1px; background:{{ $c['hex'] }}; border:1px solid rgba(0,0,0,.15)"></i>
+                            {{ $c['hex'] }} ({{ number_format($c['share'] * 100, 1) }}%)
+                        </span>
+                    @endforeach
+                    <br><span style="opacity:.7">El modelo los atribuyo a la foto con confianza de 0.7 o mas. La paleta y el contraste se midieron solo con los colores del diseno.</span>
+                </div>
+            @endif
+
             <div class="hz-seccion">
                 <h3>Hallazgos</h3>
                 <span>{{ count($grupos) }} regla(s) con observaciones · {{ $findings->count() }} hallazgo(s)</span>

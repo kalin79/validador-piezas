@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\FindingOrigin;
 use App\Enums\RuleCategory;
 use App\Enums\RuleOutcome;
 use App\Enums\ValidationStatus;
@@ -13,6 +14,7 @@ use App\Models\ValidationRun;
 use App\Services\Ai\AiException;
 use App\Services\Ai\Proveedor;
 use App\Services\Validation\AiEvaluator;
+use App\Services\Validation\AtribucionDeColores;
 use App\Services\Validation\Coverage;
 use App\Services\Validation\DeterministicEngine;
 use App\Services\Validation\Evaluators\PaletteEvaluator;
@@ -95,6 +97,10 @@ final class ValidationRunner
             }
 
             if ($corresponde) {
+                // Que modelo se intento, aunque la llamada falle antes de
+                // responder: sin esto un error queda sin proveedor ni modelo.
+                $meta['ai_model_attempted'] = $model ?: (string) config('ai.model');
+
                 try {
                     $ia = $this->ai()->evaluate($asset, $resolved, $channel, $determinista['findings'], $model);
                     $respuesta = $ia['response'];
@@ -139,6 +145,25 @@ final class ValidationRunner
 
                         foreach ($ia['coverage'] as $codigo => $c) {
                             $coverage->mark($codigo, $c['outcome'], 'AiEvaluator', $c['reason']);
+                        }
+
+                        // Paleta y contraste sin los colores de la fotografia.
+                        // Se guarda que se excluyo y con que confianza: el
+                        // veredicto tiene que poder explicarse despues.
+                        $meta['color_origins'] = $ia['color_origins'];
+                        $excluidos = AtribucionDeColores::excluidos(
+                            $ia['color_origins'],
+                            $ia['colores'],
+                            AtribucionDeColores::protegidos($determinista['findings']),
+                        );
+
+                        if ($excluidos !== []) {
+                            $meta['colores_de_fotografia'] = $excluidos;
+                            $todos = AtribucionDeColores::remedir($asset, $resolved, $channel, $todos, $excluidos, $coverage);
+                            $meta['deterministic_findings'] = count(array_filter(
+                                $todos,
+                                static fn ($f): bool => $f->origin === FindingOrigin::Deterministic,
+                            ));
                         }
 
                         if (filled($ia['extracted_text'])) {

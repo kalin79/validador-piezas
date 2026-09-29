@@ -89,6 +89,7 @@ final class AnthropicProvider implements VisionProvider
                 // 401 no se arreglan reintentando.
                 when: fn (\Throwable $e): bool => $e instanceof ConnectionException
                     || ($e instanceof RequestException
+                        && ! AiException::esPermanente($e->response->body())
                         && in_array($e->response->status(), [429, 500, 502, 503, 504, 529], true)),
             )
             ->post(rtrim((string) config('ai.anthropic.base_url'), '/').'/v1/messages', $payload);
@@ -97,9 +98,11 @@ final class AnthropicProvider implements VisionProvider
             Log::warning('Fallo la llamada al modelo de vision', [
                 'status' => $respuesta->status(),
                 'model' => $model,
+                // El cuerpo completo va al log; al usuario, una linea.
+                'body' => mb_substr($respuesta->body(), 0, 2000),
             ]);
 
-            throw AiException::requestFailed($respuesta->status(), $respuesta->body());
+            throw AiException::requestFailed($respuesta->status(), $respuesta->body(), 'Anthropic');
         }
 
         $cuerpo = $respuesta->json();
